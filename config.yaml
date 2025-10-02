@@ -1,0 +1,10 @@
+seed: 42
+horizon_days: 120
+arrivals: { weekly_total: 180, mix: { deputyship: 0.35, lpa_finance: 0.45, lpa_health: 0.20 } }
+staffing: { investigators_fte: 80, fte_per_server: 5, mentoring_drag_pct: 0.15, learning_weeks: 12 }
+policies: { wip_limit_per_investigator: 20, priority: risk_then_fifo, aged_boost_days: 120 }
+times: { triage: 1, first_action: 4, work_burst: 3, await_external: 10, cop_prep: 6, cop_listing: 18 }
+branching: { close_early_prob: 0.25, to_await_external_prob: 0.20, to_cop_prob: 0.30 }
+scenarios:
+  plan_a: { hires: [ { start_day: 15, fte: 20 } ] }
+  plan_b: { hires: [ { start_day: 15, fte: 10 }, { start_day: 75, fte: 10 } ] }
