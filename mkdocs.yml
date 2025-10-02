@@ -1,0 +1,6 @@
+site_name: OPG Investigations Backlog
+nav:
+  - Home: index.md
+  - Project Spec: OPG_Investigations_Backlog_Documentation.md
+  - OR Playbook: operational_research_playbook.md
+  - AI & Optimisation: AI_and_Optimisation.md
