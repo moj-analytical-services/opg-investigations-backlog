@@ -1,0 +1,93 @@
+# Bayesian probabilistic daily pickup model configuration
+# This template describes inputs, model structure, priors and simulation settings.
+# Lines beginning with '#' are comments and can be removed.
+
+data:
+  # Daily panel of observed (or engineered) features and events.
+  # Must include the columns listed under `required_columns` (case-sensitive).
+  input_csv: investigator_daily.csv
+  date_col: date
+  id_col: staff_id
+  team_col: team
+  required_columns:
+    - date                  # ISO YYYY-MM-DD
+    - staff_id              # anonymised identifier
+    - team                  # team or unit
+    - role                  # e.g., EO/HEO/Senior
+    - FTE                   # 0.0–1.0
+    - is_new_starter        # 0/1
+    - weeks_since_start     # integer
+    - wip                   # open cases carried by staff
+    - time_since_last_pickup # days since last new case start
+    - mentoring_flag        # 0/1
+    - trainee_flag          # 0/1
+    - backlog_available     # integer, gates pickups
+    - term_flag             # 0/1 school term indicator
+    - season                # e.g., winter/spring/summer/autumn
+    - dow                   # Mon..Sun
+    - bank_holiday          # 0/1
+    - event_newcase         # 0/1 (training target)
+    - event_legal           # 0/1 (optional target)
+    - event_court           # 0/1 (optional target)
+
+model:
+  # Separate Bernoulli hazards for clarity (alternatively use multinomial competing risks).
+  events:
+    newcase:
+      gate: "backlog_available > 0"
+      formula: |
+        newcase ~ 1 + wip + time_since_last_pickup + FTE + is_new_starter +
+                  s(weeks_since_start, monotone=True) +
+                  mentoring_flag + trainee_flag +
+                  C(term_flag) + C(season) + C(dow) + C(bank_holiday) +
+                  (1 | staff_id) + (1 | team)
+    legal:
+      enabled: true
+      requires: "wip > 0"
+      formula: |
+        legal ~ 1 + wip + FTE + C(season) + C(dow) + (1 | staff_id) + (1 | team)
+    court:
+      enabled: true
+      requires: "wip > 0"
+      formula: |
+        court ~ 1 + wip + FTE + C(season) + C(dow) + (1 | staff_id) + (1 | team)
+
+  priors:
+    intercept:
+      dist: normal
+      mean: -2            # low daily baseline
+      sd: 2
+    coefficients:
+      dist: normal
+      mean: 0
+      sd: 1
+    random_effects_scale:
+      dist: half_student_t
+      df: 3
+      scale: 1
+    monotone_spline_penalty: 1.0   # encourages smooth new-starter ramp
+
+simulation:
+  horizon_days: 84
+  posterior_draws: 1000
+  random_seed: 42
+  clamp_pickups_when_backlog_zero: true
+  # When true, only one new case can be picked by the same investigator per day.
+  one_pickup_per_staff_per_day: true
+
+outputs:
+  forecast_csv: forecast_output.csv
+  # Optional additional outputs (set to null to skip)
+  investigator_probs_csv: investigator_probabilities.csv  # per day, per staff probabilities
+  summary_csv: forecast_summary.csv                       # aggregated totals & confidence bands
+
+scenarios:
+  # Example scenario levers
+  fte_multiplier_by_role:
+    EO: 1.00
+    HEO: 1.00
+    Senior: 1.00
+  term_time_multiplier: 1.00       # multiplies newcase hazard during school term
+  bank_holiday_multiplier: 0.10    # reduces hazard on bank holidays
+  new_starter_ramp_weeks: [1, 2, 3, 4]
+  new_starter_ramp_productivity: [0.5, 0.7, 0.85, 1.0]
