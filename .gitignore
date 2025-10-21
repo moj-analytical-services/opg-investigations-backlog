@@ -1,0 +1,35 @@
+cat >> .gitignore <<'EOF'
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Native/binary blobs
+*.so
+*.dylib
+*.pdb
+*.map
+
+# Notebooks & temp
+.ipynb_checkpoints/
+.DS_Store
+
+# Build/output
+dist/
+build/
+out/
+data/
+EOF
+.venv/
+venv/
+__pycache__/
+*.so
+*.dylib
+*.pyd
+*.map
+dist/
+build/
+out/

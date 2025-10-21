@@ -1,0 +1,2 @@
+[console_scripts]
+opg-sim = opg_backlog_sim.cli:main
