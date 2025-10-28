@@ -1,6 +1,5 @@
 # Bayesian probabilistic daily pickup model configuration
 # This template describes inputs, model structure, priors and simulation settings.
-# Lines beginning with '#' are comments and can be removed.
 
 data:
   # Daily panel of observed (or engineered) features and events.
