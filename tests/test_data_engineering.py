@@ -5,7 +5,7 @@ import importlib
 import pytest
 
 # Import the module under test
-de = importlib.import_module("src/data_engineering")
+de = importlib.import_module("data_engineering")
 
 def test_month_and_term_helpers():
     assert de.month_to_season(4) == "spring"

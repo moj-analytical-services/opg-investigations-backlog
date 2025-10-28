@@ -30,6 +30,6 @@ def typed_df_small():
 @pytest.fixture
 def horizon(typed_df_small):
     """Compute a short padded horizon for the tiny dataset."""
-    from src/data_engineering import date_horizon
+    from data_engineering import date_horizon
     start, end = date_horizon(typed_df_small, pad_days=3)
     return start, end
