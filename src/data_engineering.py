@@ -396,7 +396,6 @@ def engineer(df: pd.DataFrame, colmap: dict) -> pd.DataFrame:
 
     return out
 
-
 # -------------------------------------------------------------
 # Function: date_horizon()
 # -------------------------------------------------------------
@@ -449,6 +448,9 @@ def date_horizon(typed: pd.DataFrame, pad_days: int = 14):
     return start.normalize(), end.normalize()
 
 
+# -------------------------------------------------------------
+# Function: build_event_log()
+# -------------------------------------------------------------
 def build_event_log(typed: pd.DataFrame) -> pd.DataFrame:
     """
     Construct an event log from feature-engineered investigation data.
@@ -515,6 +517,9 @@ def build_event_log(typed: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+# -------------------------------------------------------------
+# Function: build_wip_series()
+# -------------------------------------------------------------
 def build_wip_series(typed: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
     """
     Build a Work-In-Progress (WIP) daily series per staff member.
@@ -587,6 +592,9 @@ def build_wip_series(typed: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp
     )
 
 
+# -------------------------------------------------------------
+# Function: build_backlog_series()
+# -------------------------------------------------------------
 def build_backlog_series(typed: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
     """
     Build a daily backlog series (accepted minus allocated cumulative totals).
@@ -638,6 +646,120 @@ def build_backlog_series(typed: pd.DataFrame, start: pd.Timestamp, end: pd.Times
     backlog = (acc - allo).rename('backlog_available').to_frame()
     backlog.index.name = 'date'
     return backlog.reset_index()
+
+
+# -------------------------------------------------------------
+# Function: build_daily_panel()
+# -------------------------------------------------------------
+def build_daily_panel(typed: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp):
+    """
+    Create a fully featured daily staff panel for modeling and analytics.
+
+    Returns
+    -------
+    tuple
+        (daily, backlog, events)
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> typed = pd.DataFrame({
+    ...     'case_id':['C1','C2'],
+    ...     'investigator':['Alice','Bob'],
+    ...     'team':['T1','T1'],
+    ...     'role':['',''],
+    ...     'fte':[1.0, 0.8],
+    ...     'staff_id':['S1','S2'],
+    ...     'dt_received_inv':[pd.Timestamp('2025-01-01'), pd.Timestamp('2025-01-02')],
+    ...     'dt_alloc_invest':[pd.Timestamp('2025-01-02'), pd.Timestamp('2025-01-03')],
+    ...     'dt_alloc_team':[pd.NaT, pd.NaT],
+    ...     'dt_pg_signoff':[pd.NaT, pd.NaT],
+    ...     'dt_close':[pd.NaT, pd.NaT],
+    ...     'dt_legal_req_1':[pd.NaT, pd.Timestamp('2025-01-04')],
+    ...     'dt_legal_req_2':[pd.NaT, pd.NaT],
+    ...     'dt_legal_req_3':[pd.NaT, pd.NaT],
+    ...     'dt_legal_approval':[pd.NaT, pd.NaT],
+    ...     'dt_date_of_order':[pd.NaT, pd.NaT],
+    ...     'dt_flagged':[pd.NaT, pd.NaT],
+    ... })
+    >>> start, end = pd.Timestamp('2025-01-01'), pd.Timestamp('2025-01-05')
+    >>> daily, backlog, events = build_daily_panel(typed, start, end)
+    >>> set({'date','staff_id','team','fte','wip','event_newcase'}).issubset(daily.columns)
+    True
+    >>> len(backlog) == (end - start).days + 1
+    True
+    >>> {'newcase','legal_request'}.issubset(set(events['event'].unique())) if not events.empty else True
+    True
+    """
+    ev = build_event_log(typed)
+    wip = build_wip_series(typed, start, end)
+    backlog = build_backlog_series(typed, start, end)
+
+    staff = typed[["staff_id", "team", "role", "fte"]].drop_duplicates()
+    dates = pd.DataFrame({"date": pd.date_range(start, end, freq="D")})
+    grid = dates.assign(key=1).merge(staff.assign(key=1), on="key").drop(columns="key")
+    grid = grid.merge(wip, on=["date", "staff_id", "team"], how="left").fillna({"wip": 0})
+
+    if not ev.empty:
+        ev_flags = (
+            ev.assign(flag=1)
+              .pivot_table(index=["date", "staff_id"], columns="event", values="flag", aggfunc="max")
+              .reset_index()
+              .rename_axis(None, axis=1)
+        )
+        grid = grid.merge(ev_flags, on=["date", "staff_id"], how="left")
+
+    for c in ["newcase", "legal_request", "legal_approval", "court_order"]:
+        if c not in grid:
+            grid[c] = 0
+        else:
+            grid[c] = grid[c].fillna(0).astype(int)
+
+    grid = grid.sort_values(["staff_id", "date"])
+    grp = grid.groupby("staff_id", sort=False)
+    runs = grp["newcase"].transform(lambda s: (s == 1).cumsum())
+    grid["time_since_last_pickup"] = grid.groupby([grid["staff_id"], runs]).cumcount()
+    mask_no_pickups = grp["newcase"].transform("sum") == 0
+    grid.loc[mask_no_pickups, "time_since_last_pickup"] = 99
+
+    grid["dow"] = grid["date"].dt.day_name().str[:3]
+    grid["season"] = grid["date"].dt.month.map(month_to_season)
+    grid["term_flag"] = grid["date"].dt.month.map(is_term_month).astype(int)
+    grid["bank_holiday"] = 0
+
+    first_alloc = (
+        typed.dropna(subset=["dt_alloc_invest"])
+             .groupby("staff_id")["dt_alloc_invest"].min()
+             .rename("first_alloc")
+    )
+    grid = grid.merge(first_alloc, on="staff_id", how="left")
+    grid["weeks_since_start"] = (
+        (grid["date"] - grid["first_alloc"]).dt.days // 7
+    ).fillna(0).clip(lower=0).astype(int)
+    grid["is_new_starter"] = (grid["weeks_since_start"] < 4).astype(int)
+
+    grid["mentoring_flag"] = 0
+    grid["trainee_flag"] = 0
+
+    grid = grid.merge(backlog, on="date", how="left").fillna({"backlog_available": 0})
+
+    grid["event_newcase"] = grid["newcase"].astype(int)
+    grid["event_legal"] = ((grid["legal_request"] + grid["legal_approval"]) > 0).astype(int)
+    grid["event_court"] = grid["court_order"].astype(int)
+
+    grid = grid.drop(columns=["newcase", "legal_request", "legal_approval", "court_order", "first_alloc"])
+
+    cols = [
+        "date", "staff_id", "team", "role", "fte",
+        "is_new_starter", "weeks_since_start",
+        "wip", "time_since_last_pickup",
+        "mentoring_flag", "trainee_flag",
+        "backlog_available", "term_flag", "season", "dow", "bank_holiday",
+        "event_newcase", "event_legal", "event_court"
+    ]
+    daily = grid[cols].sort_values(["staff_id", "date"]).reset_index(drop=True)
+    return daily, backlog, ev
+
 
 
 
