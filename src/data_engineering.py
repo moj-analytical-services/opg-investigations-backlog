@@ -800,3 +800,186 @@ print("Events shape:", events.shape)
 print("\nDaily head:\n", daily.head())
 print("\nBacklog tail:\n", backlog.tail())
 print("\nEvents:\n", events.sort_values(['date','staff_id','event']))
+
+# New function: calculate_time_interval
+def calculate_time_interval(df: pd.DataFrame, start_col: str, end_col: str, new_col_name: str = 'time_interval', unit: str = 'days') -> pd.DataFrame:
+    """
+    Calculate the time interval between two datetime columns in a DataFrame.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The input DataFrame.
+    start_col : str
+        The name of the column containing start datetime objects.
+    end_col : str
+        The name of the column containing end datetime objects.
+    new_col_name : str, optional
+        The name for the new column containing the calculated time intervals.
+        Defaults to 'time_interval'.
+    unit : str, optional
+        The unit for the time interval ('days', 'hours', 'minutes', 'seconds').
+        Defaults to 'days'.
+
+    Returns
+    -------
+    pd.DataFrame
+        The DataFrame with the new 'time_interval' column added.
+    """
+    df_copy = df.copy()
+    if start_col in df_copy.columns and end_col in df_copy.columns:
+        # Ensure columns are datetime type, coercing errors to NaT
+        df_copy[start_col] = pd.to_datetime(df_copy[start_col], errors='coerce')
+        df_copy[end_col] = pd.to_datetime(df_copy[end_col], errors='coerce')
+
+        time_delta = df_copy[end_col] - df_copy[start_col]
+
+        if unit == 'days':
+            df_copy[new_col_name] = time_delta.dt.days
+        elif unit == 'hours':
+            df_copy[new_col_name] = time_delta.dt.total_seconds() / 3600
+        elif unit == 'minutes':
+            df_copy[new_col_name] = time_delta.dt.total_seconds() / 60
+        elif unit == 'seconds':
+            df_copy[new_col_name] = time_delta.dt.total_seconds()
+        else:
+            raise ValueError(f"Unsupported unit: {unit}. Choose from 'days', 'hours', 'minutes', 'seconds'.")
+    else:
+        df_copy[new_col_name] = np.nan
+        print(f"Warning: One or both columns ('{start_col}', '{end_col}') not found. '{new_col_name}' column filled with NaNs.")
+    return df_copy
+
+
+# New function: analyse_monthly_time_interval_trend
+def analyse_monthly_time_interval_trend(df: pd.DataFrame, config: dict, time_interval_col_name: str = 'time_interval') -> pd.DataFrame:
+    """
+    Analyzes monthly trends and distributions of a calculated time interval across different case types.
+
+    This function performs the following steps:
+    1. Calculates a 'time interval' based on specified start and end date columns.
+    2. Filters the data based on a specified date range.
+    3. Groups the data by year-month and case type, then calculates descriptive statistics
+       (mean, median, std dev, 25th/75th percentiles) for the 'time interval'.
+    4. Performs a similar aggregation for 'all case types' per month.
+    5. Combines the results and saves them to a specified output file.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The input DataFrame containing case data. Expected to have columns for
+        case ID, case type, and start/end datetime columns as specified in config.
+    config : dict
+        A dictionary containing configuration parameters for the analysis,
+        typically loaded from `configs/config.yaml`.
+        Expected keys in the 'monthly_trend_analysis' section:
+        - 'output_filepath': Path to save the aggregated results.
+        - 'case_type_column_name': Name of the column identifying case types.
+        - 'start_time_column_name': Name of the column for the start of the time interval.
+        - 'end_time_column_name': Name of the column for the end of the time interval.
+        - 'time_interval_unit': Unit for the time interval ('days', 'hours', etc.).
+        - 'analysis_start_date': String in 'YYYY-MM-DD' format to filter data.
+        - 'analysis_end_date': String in 'YYYY-MM-DD' format to filter data.
+    time_interval_col_name : str, optional
+        The name of the column where the calculated time interval will be stored.
+        Defaults to 'time_interval'.
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame containing the aggregated monthly trend statistics.
+    """
+    analysis_config = config.get('monthly_trend_analysis', {})
+
+    output_filepath_str = analysis_config.get('output_filepath')
+    case_type_col = analysis_config.get('case_type_column_name')
+    start_time_col = analysis_config.get('start_time_column_name')
+    end_time_col = analysis_config.get('end_time_column_name')
+    time_unit = analysis_config.get('time_interval_unit', 'days')
+    analysis_start_date_str = analysis_config.get('analysis_start_date')
+    analysis_end_date_str = analysis_config.get('analysis_end_date')
+
+    if not all([output_filepath_str, case_type_col, start_time_col, end_time_col, analysis_start_date_str, analysis_end_date_str]):
+        raise ValueError(
+            "Missing one or more required configuration parameters in 'monthly_trend_analysis' "
+            "section: output_filepath, case_type_column_name, start_time_column_name, "
+            "end_time_column_name, analysis_start_date, analysis_end_date."
+        )
+
+    output_filepath = Path(output_filepath_str)
+
+    df_copy = df.copy()
+
+    # 1. Calculate the 'time interval'
+    df_copy = calculate_time_interval(df_copy, start_time_col, end_time_col, time_interval_col_name, time_unit)
+
+    # 2. Filter the DataFrame based on analysis date range
+    analysis_start_date = pd.to_datetime(analysis_start_date_str)
+    analysis_end_date = pd.to_datetime(analysis_end_date_str)
+
+    # Filter based on the start date column
+    df_filtered = df_copy[
+        (df_copy[start_time_col] >= analysis_start_date) &
+        (df_copy[start_time_col] <= analysis_end_date)
+    ].copy()
+
+    if df_filtered.empty:
+        print(f"No data found for the specified analysis period: {analysis_start_date_str} to {analysis_end_date_str}. "
+              "Returning empty DataFrame.")
+        return pd.DataFrame()
+
+    # Ensure time interval is numeric and non-negative
+    df_filtered[time_interval_col_name] = pd.to_numeric(df_filtered[time_interval_col_name], errors='coerce')
+    df_filtered = df_filtered[df_filtered[time_interval_col_name].notna()]
+    df_filtered = df_filtered[df_filtered[time_interval_col_name] >= 0] # Assuming time intervals are non-negative
+
+    if df_filtered.empty:
+        print("No valid time interval data after filtering and cleaning. Returning empty DataFrame.")
+        return pd.DataFrame()
+
+    # 3. Extract year and month to create a 'year_month' column
+    df_filtered['year_month'] = df_filtered[start_time_col].dt.to_period('M')
+
+    # Group by `year_month` and `case_type_column_name` and calculate statistics
+    grouped_by_case_type = df_filtered.groupby(['year_month', case_type_col])[time_interval_col_name].agg(
+        mean=np.mean,
+        median=np.median,
+        std_dev=np.std,
+        p25=lambda x: x.quantile(0.25),
+        p75=lambda x: x.quantile(0.75),
+        count='size'
+    ).reset_index()
+    grouped_by_case_type['category'] = grouped_by_case_type[case_type_col]
+    grouped_by_case_type['aggregation_level'] = 'per_case_type'
+    grouped_by_case_type = grouped_by_case_type.drop(columns=[case_type_col])
+
+
+    # 4. Group by `year_month` only (for 'all case types') and calculate statistics
+    grouped_all_case_types = df_filtered.groupby('year_month')[time_interval_col_name].agg(
+        mean=np.mean,
+        median=np.median,
+        std_dev=np.std,
+        p25=lambda x: x.quantile(0.25),
+        p75=lambda x: x.quantile(0.75),
+        count='size'
+    ).reset_index()
+    grouped_all_case_types['category'] = 'ALL' # Label for the overall aggregation
+    grouped_all_case_types['aggregation_level'] = 'all_case_types'
+
+    # 5. Combine the results
+    combined_results = pd.concat([grouped_by_case_type, grouped_all_case_types], ignore_index=True)
+
+    # Convert 'year_month' Period to string for better saving/plotting compatibility
+    combined_results['year_month'] = combined_results['year_month'].astype(str)
+
+    # Save the combined DataFrame
+    output_filepath.parent.mkdir(parents=True, exist_ok=True)
+    if output_filepath.suffix.lower() == '.csv':
+        combined_results.to_csv(output_filepath, index=False)
+    elif output_filepath.suffix.lower() == '.parquet':
+        combined_results.to_parquet(output_filepath, index=False)
+    else:
+        print(f"Warning: Unsupported output file format '{output_filepath.suffix}'. Saving as CSV by default.")
+        combined_results.to_csv(output_filepath.with_suffix('.csv'), index=False)
+
+    print(f"Monthly time interval trends saved to {output_filepath}")
+    return combined_results
