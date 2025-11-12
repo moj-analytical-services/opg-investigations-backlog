@@ -54,42 +54,47 @@ Operational analytics, forecasting, and **transparent micro‑simulation + AI‑
 &nbsp;
 <a name="setup"></a>
 # Repository and Git Setup
-## Repository structure
-```
+- Branching: feature branches (feat/, fix/, refactor/), protected main.
 
+- CI gates: ruff + black + pytest run on every push/PR via GitHub Actions.
+
+- PR hygiene: PR template, CODEOWNERS, issue templates, semantic commit summaries.
+
+- Project management: create a GitHub Project board (Backlog → In Progress → Review → Done), tag issues (data, model, infra, docs).
+
+- Quality & testing: schema checks, unit & property tests, reproducibility (seeds), pre-commit hooks, doc pages for QA and ethics.
+All of the above is pre-wired in the repo so you can demonstrate collaborative, production-ready habits.
+
+## Repository structure / layout
+```
 opg-investigations-backlog/
-├─ src/opg_backlog_sim/        # Package: DES + AI helpers
-├─ configs/                    # YAML inputs & scenarios
-├─ docs/                       # MkDocs site (project spec, playbook, AI methods)
-├─ .github/workflows/          # CI/CD pipelines
-├─ tests/                      # Unit tests
-├─ notebooks/                  # Exploration (outputs stripped)
-├─ data/{raw,interim,processed}/  # (placeholders only)
-└─ ...
-
-```
-## Repository layout
-project-name/
-├── data/                    # raw & processed data (git-ignored)
+├── configs/                 # YAML inputs & scenarios
+├── data/                    # raw & processed data (git-ignored) (placeholders only)
 │   ├── raw/                 # original, untouched data
 │   └── processed/           # cleaned or transformed data outputs
+│   └── out/                 # processed data outputs
 ├── notebooks/               # exploratory and analysis notebooks
 │   └── data-analysis.ipynb  # data analysis notebook
 │   └── Leila-yousefi.ipynb
 │   └── corr_cause.ipynb
+├── docs/                    # User guide, QA, ethics, PM, interview Q&A
 ├── src/                     # Python modules and scripts
 │   ├── __init__.py          # marks this folder as a package
 │   └── data_processing.py   # reusable data-loading and cleaning functions
 │   └── data_quality.py      # Data Quality Checks class
-├── tests/                   # Automated unit testing
+│   └── g7_assessment/       # ETL, feature eng, models, viz, CLI (Click)
+├── tests/                   # Automated unit testing, Pytest unit tests (data & modeling)
 │   └── test_data_quality.py # pytest tests for Data Quality
 ├─ .github/
 │   └─ workflows/
-│       └─ ci.yml 
+│       └─ ci.yml            # Lint + tests on PRs/commits to main
 │       └─ ci-cd.yml         # multi-stage pipeline(build→test→ deploy-qa), needs: enforce ordering, ties QA deploy to protected qa environment requires  approval.
+├── .pre-commit-config.yaml  # black, ruff, nbstripout, etc.
 ├── .gitignore               # Configure to exclude from Git /data/, environment folders, caches, and any large files.
 ├── README.md                # project overview and setup instructions
 └── requirements.txt         # pinned Python dependencies / freezed library versions to ensure consistent environments across machines.
+└── ...
+```
 
 ## Quickstart
 ```bash
