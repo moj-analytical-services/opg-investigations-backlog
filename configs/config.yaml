@@ -8,3 +8,12 @@ branching: { close_early_prob: 0.25, to_await_external_prob: 0.20, to_cop_prob: 
 scenarios:
   plan_a: { hires: [ { start_day: 15, fte: 20 } ] }
   plan_b: { hires: [ { start_day: 15, fte: 10 }, { start_day: 75, fte: 10 } ] }
+
+
+monthly_trend_analysis:
+  output_filepath: "data/processed/monthly_case_time_intervals.csv"
+  case_type_column_name: "case_type"
+  start_time_column_name: "case_start_date"
+  end_time_column_name: "case_end_date"
+  analysis_start_date: "2020-01-01"
+  analysis_end_date: "2023-12-31"

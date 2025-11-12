@@ -6,6 +6,12 @@ __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+*.egg-info/
+.cache/
+.pytest_cache/
+.mypy_cache/
+build/
+dist/
 
 # Native/binary blobs
 *.so
@@ -33,3 +39,18 @@ __pycache__/
 dist/
 build/
 out/
+
+# Data
+data/raw/*
+!data/raw/README.md
+data/interim/*
+data/processed/*
+data/external/*
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Reports
+reports/
