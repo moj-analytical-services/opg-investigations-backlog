@@ -93,13 +93,36 @@ project-name/
 
 ## Quickstart
 ```bash
-python -m venv .venv && . .venv/bin/activate
+# 1) Create env and install
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
 pip install -U pip
 pip install -e ".[dev]"
+
 pre-commit install
+
+
+# 2) Generate synthetic data (replace with your real CSV when ready)
+python -m g7_assessment.cli generate-data --rows 8000 --out data/raw/synthetic_investigations.csv
+
+# 3) EDA (saves plots & tables to ./reports)
+python -m g7_assessment.cli eda --csv data/raw/synthetic_investigations.csv
+
+# 4) Train all models (saves into ./models)
+python -m g7_assessment.cli train --csv data/raw/synthetic_investigations.csv
+
+# 5) Forecast 90-day backlog + plot
+python -m g7_assessment.cli forecast --csv data/raw/synthetic_investigations.csv --days 90
+
+# 6) Staffing scenario: add 10 investigators
+python -m g7_assessment.cli simulate --csv data/raw/synthetic_investigations.csv --delta-investigators 10
+
+
 make lint && make test
 streamlit run app.py
 mkdocs serve
+
 ```
 ## implementation
 ```bash
