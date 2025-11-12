@@ -1,6 +1,19 @@
 site_name: OPG Investigations Backlog
+site_description: Project documentation and interview materials
+theme:
+  name: material
 nav:
-  - Home: index.md
+  - Home: docs/index.md
   - Project Spec: README.md
+  - User Guide: docs/user_guide.md
   - OR Playbook: operational_research_playbook.md
   - AI & Optimisation: AI_and_Optimisation.md
+    - Quality & Testing: docs/qa.md
+  - Governance & Ethics: docs/ethics.md
+  - Project Management: docs/project_management.md
+  - Interview Q&A: docs/interview_qna.md
+  - Working Agreement: docs/working_agreement.md
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true

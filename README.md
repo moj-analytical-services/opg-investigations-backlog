@@ -225,7 +225,15 @@ python src/analyzers.py
 
 <a name="setup"></a>
 # Quality Assurance
-Quality starts locally with pre-commit (Black/Ruff/nbstripout). On GitHub, we gate merges with protected branches, required reviews, and Actions CI (lint, tests, data checks). We manage work with Projects, issue/PR templates, CODEOWNERS, and semantic releases. For data, we use schema contracts (Pandera/Great Expectations), reproducible environments, and artifact versioning. We communicate findings via model cards, docs, and stakeholder-focused release notes.
+- use pre-commit for local QA, but merges are gated by CI (lint, tests, schema checks) on GitHub.
+- use protected branches, required reviews via CODEOWNERS, and a Projects board for shared visibility.
+- for data quality, run Pandera/Great Expectations in CI.
+- document with model cards and stakeholder-friendly release notes, and publish docs automatically. This setup lets analysts, engineers, and policy colleagues collaborate with confidence and traceability.
+- Quality starts locally with pre-commit (Black/Ruff/nbstripout).
+- On GitHub, gate merges with protected branches, required reviews, and Actions CI (lint, tests, data checks).
+- manage work with Projects, issue/PR templates, CODEOWNERS, and semantic releases.
+- for data, use schema contracts (Pandera/Great Expectations), reproducible environments, and artifact versioning. We communicate findings via model cards, docs, and stakeholder-focused release notes.
+
 &nbsp; 
 
 ## QA on GitHub (beyond pre-commit)
@@ -340,6 +348,13 @@ git commit -m "chore: bump pre-commit hook versions"
 - **Projects**: create board; columns Backlog → In Progress → Review → Done; automate issue → PR → Done transitions.
 - **Docs site**: MkDocs workflow to publish on main; link from repo header.
 - **Release flow**: Conventional Commits + Release Drafter or semantic-release to auto-generate changelogs.
+
+## Documentation site
+After pushing to GitHub:
+1. Ensure Actions run for the **Docs** workflow.
+2. In **Settings → Pages**, set Source to **Deploy from a branch** and select the `gh-pages` branch, `/ (root)`.
+3. Your site will publish at: `https://moj-analytical-services.github.io/opg-investigations-backlog/`.
+
 
 &nbsp; 
 
