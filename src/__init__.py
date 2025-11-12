@@ -1,1 +1,1 @@
-__version__ = '0.1.0'
+from .notebook_code import *  # Re-export all notebook functions/classes

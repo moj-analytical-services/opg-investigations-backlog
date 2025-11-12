@@ -91,7 +91,12 @@ opg-investigations-backlog/
 │   ├── __init__.py          # marks this folder as a package
 │   └── data_processing.py   # reusable data-loading and cleaning functions
 │   └── data_quality.py      # Data Quality Checks class
-│   └── g7_assessment/       # ETL, feature eng, models, viz, CLI (Click)
+│   └── notebook_code.py     # verbatim code extracted from your notebook (magics commented)
+│   └── preprocessing.py     # re-exports: normalise_col, parse_date_series, engineer, ...
+│   └── intervals.py         # re-exports: build_event_log, build_wip_series, build_backlog_series, ...
+│   └── analysis_demo.py     # last-year interval analysis by team (non-invasive)
+│   └── distributions.py     # distribution of interval changes by case_type across years
+│   └── cli_nbwrap.py        # ETL, feature eng, models, viz, CLI (Click)
 ├── tests/                   # Automated unit testing, Pytest unit tests (data & modeling)
 │   └── test_data_quality.py # pytest tests for Data Quality
 ├─ .github/
@@ -105,11 +110,72 @@ opg-investigations-backlog/
 └── ...
 ```
 
+##
+How to use the modules (examples)
+```python
+# PREPROCESSING / MANIPULATION / IMPUTATION
+from preprocessing import load_raw, engineer
+raw, colmap = load_raw("data/raw/raw.csv")
+typed = engineer(raw, colmap)  # uses your notebook’s exact logic
+
+# INTERVAL ANALYSIS
+from intervals import build_event_log, build_backlog_series, summarise_daily_panel
+events = build_event_log(typed)
+backlog = build_backlog_series(typed)
+daily = summarise_daily_panel(typed)
+
+# DEMO: Last-year interval analysis by team (non-invasive)
+from analysis_demo import last_year_by_team
+trend = last_year_by_team(eng_df=typed, backlog_series=backlog, bank_holidays=None)
+
+# DISTRIBUTIONS over years by case_type
+from distributions import interval_change_distribution
+res = interval_change_distribution(interval_df=typed, interval_col="days_to_alloc", group="case_type")
+annual_stats = res["annual_stats"]  # per year x case_type: median, p25, p75, mean, n
+yoy_change   = res["yoy_change"]    # year-on-year change in medians by case_type
+
+```
+
+## How to run (end-to-end)
+```python
+
+# 0) Activate your venv and install deps
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
+# 1) PREP: run your original preprocessing/engineering (unchanged logic)
+python -m cli_nbwrap prep --raw data/raw/raw.csv --outdir data/processed
+
+# 2) INTERVALS: event log + backlog + panels (uses your notebook functions)
+python -m cli_nbwrap intervals --eng data/processed/engineered.csv --outdir data/processed
+
+# 3) DEMO: last-year team trend (non-invasive)
+python -m cli_nbwrap trend-demo --eng data/processed/engineered.csv \
+                                              --backlog data/processed/backlog_series.csv \
+                                              --out reports/last_year_by_team.csv
+
+# 4) DISTRIBUTIONS: per-case_type over years (default uses days_to_alloc)
+python -m cli_nbwrap interval-distribution --eng data/processed/engineered.csv \
+                                                         --interval-col days_to_alloc \
+                                                         --group case_type \
+                                                         --outdir reports
+
+```
+
+
 ## Quickstart
 ```bash
 # 1) Create env and install
+# venv & deps (if not already set up)
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+
+# Run the full pipeline in one go (choose your CSV and output base folder)
+python -m cli_nbwrap run-all \
+  --raw data/raw/raw.csv \
+  --outbase . \
+  --interval-col days_to_alloc \
+  --group case_type
 
 pip install -U pip
 pip install -e ".[dev]"
@@ -118,19 +184,19 @@ pre-commit install
 
 
 # 2) Generate synthetic data (replace with your real CSV when ready)
-python -m g7_assessment.cli generate-data --rows 8000 --out data/raw/synthetic_investigations.csv
+python -m cli generate-data --rows 8000 --out data/raw/synthetic_investigations.csv
 
 # 3) EDA (saves plots & tables to ./reports)
-python -m g7_assessment.cli eda --csv data/raw/synthetic_investigations.csv
+python -m cli eda --csv data/raw/synthetic_investigations.csv
 
 # 4) Train all models (saves into ./models)
-python -m g7_assessment.cli train --csv data/raw/synthetic_investigations.csv
+python -m cli train --csv data/raw/synthetic_investigations.csv
 
 # 5) Forecast 90-day backlog + plot
-python -m g7_assessment.cli forecast --csv data/raw/synthetic_investigations.csv --days 90
+python -m cli forecast --csv data/raw/synthetic_investigations.csv --days 90
 
 # 6) Staffing scenario: add 10 investigators
-python -m g7_assessment.cli simulate --csv data/raw/synthetic_investigations.csv --delta-investigators 10
+python -m cli simulate --csv data/raw/synthetic_investigations.csv --delta-investigators 10
 
 
 make lint && make test
@@ -417,11 +483,48 @@ Hierarchical modelling across teams, richer calendar effects, Bayesian uncertain
 
 **Aim:**
 
-**Objective:**
-1. 
+&nbsp; 
 
-2. 
+&nbsp; 
 
+<a name="objectives"></a>
+# Objectives
+
+1. **Backlog drivers** Measure how investigator staffing over time and the time-to-allocation interval (receipt → allocation) influence daily, monthly, and annual backlog, overall and by case type/risk.
+
+2. **Timing analysis** Use statistical and time-series methods to understand which factors lengthen or shorten key intervals (e.g., time to allocation; time to PG sign-off).
+
+3. **High-risk triage** Identify applications most likely to generate concerns so verification can be prioritised upstream.
+
+4. **Legal review propensity** Estimate which case types (and related factors) are more likely to require legal review, to plan capacity and reduce rework.
+
+5. **Feasibility testing** Test whether adding investigators is the dominant lever versus alternatives (case-mix shifts, reallocation, process changes), including “step-change” scenarios and expected backlog reduction.
+
+6. **Simulation handoff** Produce simulation-ready inputs (arrival rates by case type, service-time distributions with censoring, routing probabilities to legal review, staffing profiles) to power a micro-simulation of the investigation pathway.
+
+7. **Policy impact** Provide recommendations to reduce backlog and improve donor experience, with quantified trade-offs, uncertainty, and subgroup fairness checks.
+
+8.
+
+
+## Bite-size Objectives
+1. Feature engineering & preprocessing (leak-safe)
+    - Impute + scale numerics, encode categoricals, add optional numeric interactions.
+    - Handle high-cardinality categories (e.g., occupation) via K-Fold target encoding (no leakage).
+
+2. Advanced logistic model for legal-review propensity
+    - Elastic-Net Logistic (CV) for stable selection; optional domain interactions.
+    - Proper split, metrics (AUC/AP/Brier), probability calibration curve.
+
+3. Diagnostics
+    - VIF & correlation snapshot (redundancy).
+    - Optional over-dispersion check (GLM viewpoint).
+
+4. CLI tasks
+    - New commands to run diagnostics and an advanced logistic pipeline end-to-end.
+
+5. Tests
+    - Smoke tests so CI stays green.
 
 &nbsp; 
 

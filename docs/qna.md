@@ -1,4 +1,4 @@
-# Interview Q&A (G7 Data Science Assessment)
+# Q&A
 
 ## Approach
 **Q:** How did you scope the problem and define success?
