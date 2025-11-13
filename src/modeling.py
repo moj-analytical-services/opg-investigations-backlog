@@ -1,66 +1,114 @@
+# src/g7_assessment/modeling.py
+# Purpose: Models including advanced logistic pipeline for legal-review propensity
+#          using an elastic-net regularised logistic regression with CV.
+
 from __future__ import annotations
 import numpy as np
 import pandas as pd
-import statsmodels.api as sm
-from lifelines import CoxPHFitter
-from sklearn.linear_model import LogisticRegression
+from pathlib import Path
+
 from sklearn.pipeline import Pipeline
-from sklearn.model_selection import train_test_split
-from .features import build_design_matrix, derive_case_level_features
+from sklearn.model_selection import train_test_split, StratifiedKFold
+from sklearn.linear_model import LogisticRegressionCV
+from sklearn.calibration import calibration_curve
+from sklearn.metrics import roc_auc_score, average_precision_score, brier_score_loss
 
-def fit_backlog_glm(daily_backlog: pd.DataFrame, staffing: pd.DataFrame):
-    df = daily_backlog.merge(staffing, on="date", how="left").fillna({"investigators_on_duty": 0, "n_allocations": 0})
-    df["t"] = (pd.to_datetime(df["date"]) - pd.to_datetime(df["date"]).min()).dt.days
-    X = sm.add_constant(df[["investigators_on_duty", "n_allocations", "t"]])
-    y = df["backlog"].astype(int)
-    poisson = sm.GLM(y, X, family=sm.families.Poisson()).fit()
-    overdisp = (y.var() - y.mean()) / y.mean() if y.mean() > 0 else 0
-    model = poisson
-    if overdisp > 1.0:
-        model = sm.GLM(y, X, family=sm.families.NegativeBinomial()).fit()
-    return model, df
+from .features import build_preprocessor
 
-def forecast_backlog(model, df_template: pd.DataFrame, days: int = 90):
-    last_date = pd.to_datetime(df_template["date"]).max()
-    future_days = pd.date_range(last_date + pd.Timedelta(days=1), periods=days, freq="D")
-    med_staff = df_template["investigators_on_duty"].median()
-    med_alloc = df_template["n_allocations"].median()
-    base_t0 = (pd.to_datetime(df_template["date"]) - pd.to_datetime(df_template["date"]).min()).dt.days.max()
-    Xf = pd.DataFrame({
-        "const": 1.0,
-        "investigators_on_duty": med_staff,
-        "n_allocations": med_alloc,
-        "t": base_t0 + np.arange(1, days+1),
-    })
-    mu = model.predict(Xf)
-    out = pd.DataFrame({"date": future_days, "pred_backlog": np.asarray(mu)})
-    return out
+def fit_legal_review_logit_enet(
+    df: pd.DataFrame,
+    y_name: str = "needs_legal_review",
+    random_state: int = 42,
+):
+    """
+    Fit an elastic-net logistic regression on engineered features using a leak-safe preprocessor.
 
-def fit_legal_review_classifier(df: pd.DataFrame):
-    df = derive_case_level_features(df)
-    X_cols = ["team", "case_type", "risk", "reallocation", "weighting", "days_to_alloc"]
-    X = df[X_cols]
-    y = df["needs_legal_review"].astype(int)
-    pre = build_design_matrix(df[X_cols + ["needs_legal_review"]])
-    pipe = Pipeline([("pre", pre), ("clf", LogisticRegression(max_iter=200, solver="liblinear"))])
-    Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-    pipe.fit(Xtr, ytr)
-    yprob = pipe.predict_proba(Xte)[:, 1]
-    return pipe, (yte, yprob)
+    Steps
+    -----
+    1) Build ColumnTransformer with imputation, scaling, OHE, and K-Fold target encoding.
+    2) Split data (stratified) into train/test.
+    3) Fit LogisticRegressionCV with elastic-net penalty (solver='saga').
+    4) Return fitted pipeline and metrics dict (AUC, AP, Brier, calibration).
 
-def fit_survival_model(df: pd.DataFrame):
-    sdf = df[["days_to_pg_signoff", "event_pg_signoff", "case_type", "risk", "weighting"]].dropna(subset=["days_to_pg_signoff"])
-    if sdf.empty:
-        raise ValueError("No survival data found.")
-    sdf = sdf.rename(columns={"days_to_pg_signoff": "duration", "event_pg_signoff": "event"})
-    sdf = pd.get_dummies(sdf, columns=["case_type", "risk"], drop_first=True)
-    cph = CoxPHFitter()
-    cph.fit(sdf, duration_col="duration", event_col="event", show_progress=False)
-    return cph
+    Returns
+    -------
+    pipe : sklearn Pipeline
+        Preprocessor + classifier combined, ready for .predict_proba().
+    metrics : dict
+        AUC, average precision, brier score, and calibration arrays.
+    X_test, y_test : pd.DataFrame, pd.Series
+        Hold-out split for downstream plotting/reporting.
+    """
+    # Drop rows without target
+    df = df.dropna(subset=[y_name]).copy()
+    y = df[y_name].astype(int)
+    X = df.drop(columns=[y_name])
 
-def scenario_apply_staffing(df_template: pd.DataFrame, delta_investigators: int, model):
-    df_scn = df_template.copy()
-    df_scn["investigators_on_duty"] = np.maximum(0, df_scn["investigators_on_duty"] + delta_investigators)
-    X = sm.add_constant(df_scn[["investigators_on_duty", "n_allocations", "t"]])
-    pred = model.predict(X)
-    return pred
+    # Build leak-safe preprocessor (ColumnTransformer). It will receive y during fit().
+    pre = build_preprocessor(df=df, y_name=y_name)
+
+    # Elastic-Net logistic with CV: balances sparsity (L1) and stability (L2)
+    logit = LogisticRegressionCV(
+        penalty="elasticnet",
+        solver="saga",
+        l1_ratios=[0.1, 0.5, 0.9],          # explore L1/L2 mixes
+        Cs=20,                               # inverse regularisation strength grid
+        cv=StratifiedKFold(5, shuffle=True, random_state=random_state),
+        scoring="roc_auc",
+        max_iter=5000,
+        n_jobs=-1,
+        class_weight="balanced",             # robust when class skew exists
+    )
+
+    pipe = Pipeline([
+        ("pre", pre),
+        ("clf", logit),
+    ])
+
+    # Hold-out split
+    X_tr, X_te, y_tr, y_te = train_test_split(
+        X, y, test_size=0.2, random_state=random_state, stratify=y
+    )
+
+    # Fit end-to-end (ColumnTransformer gets both X_tr and y_tr)
+    pipe.fit(X_tr, y_tr)
+
+    # Evaluate on the hold-out set
+    y_prob = pipe.predict_proba(X_te)[:, 1]
+    auc = roc_auc_score(y_te, y_prob)
+    ap = average_precision_score(y_te, y_prob)
+    brier = brier_score_loss(y_te, y_prob)
+    frac_pos, mean_pred = calibration_curve(y_te, y_prob, n_bins=10, strategy="uniform")
+
+    metrics = {
+        "auc": float(auc),
+        "average_precision": float(ap),
+        "brier": float(brier),
+        "calibration_frac_pos": frac_pos,
+        "calibration_mean_pred": mean_pred,
+    }
+    return pipe, metrics, X_te, y_te
+
+def save_calibration_plot(mean_pred, frac_pos, out_png: Path):
+    """
+    Save a simple calibration curve plot.
+    """
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(figsize=(5,4))
+    ax.plot(mean_pred, frac_pos, marker="o", label="Model")
+    ax.plot([0,1], [0,1], "--", label="Perfectly calibrated")
+    ax.set_xlabel("Mean predicted probability")
+    ax.set_ylabel("Fraction of positives")
+    ax.set_title("Calibration curve")
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(out_png, dpi=160)
+
+def export_model_and_report(pipe, metrics: dict, out_dir: Path):
+    """
+    Persist the fitted pipeline and key metrics for reporting.
+    """
+    from joblib import dump
+    out_dir.mkdir(parents=True, exist_ok=True)
+    dump(pipe, out_dir / "legal_review_enet.joblib")
+    pd.Series(metrics).to_csv(out_dir / "legal_review_enet_metrics.csv")

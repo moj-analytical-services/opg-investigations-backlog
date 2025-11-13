@@ -55,7 +55,7 @@ Operational analytics, forecasting, and **transparent micro‑simulation + AI‑
 &nbsp;
 # [Future Work](#future)
 &nbsp;
-
+# [Licencing](#licence)
 &nbsp; 
 
 &nbsp; 
@@ -63,16 +63,23 @@ Operational analytics, forecasting, and **transparent micro‑simulation + AI‑
 
 <a name="setup"></a>
 # Repository and Git Setup
-- Branching: feature branches (feat/, fix/, refactor/), protected main.
+- **Branching**: feature branches (feat/, fix/, refactor/), protected main.
 
-- CI gates: ruff + black + pytest run on every push/PR via GitHub Actions.
+- **CI gates**: ruff + black + pytest run on every push/PR via GitHub Actions.
 
-- PR hygiene: PR template, CODEOWNERS, issue templates, semantic commit summaries.
+- **PR hygiene**: PR template, CODEOWNERS, issue templates, semantic commit summaries.
 
-- Project management: create a GitHub Project board (Backlog → In Progress → Review → Done), tag issues (data, model, infra, docs).
+- **Project management**: create a GitHub Project board (Backlog → In Progress → Review → Done), tag issues (data, model, infra, docs).
 
-- Quality & testing: schema checks, unit & property tests, reproducibility (seeds), pre-commit hooks, doc pages for QA and ethics.
+- **Quality & testing**: schema checks, unit & property tests, reproducibility (seeds), pre-commit hooks, doc pages for QA and ethics.
 All of the above is pre-wired in the repo so you can demonstrate collaborative, production-ready habits.
+
+- **We use a CI wrapper so devs and CI run the same steps. We gate PRs with smoke tests—tiny, end-to-end checks that a synthetic dataset runs through our pipeline and produces key artefacts. It keeps feedback fast and dependable; deeper tests run nightly.**
+- A **CI wrapper** (a **Makefile** target or scripts/ci.sh) makes the exact same command work locally and in **GitHub Actions**.
+* “Our **CI wrapper** ensures the *same* steps run locally and in CI—no ‘works on my machine’ drift.”
+* “We gate PRs with **smoke tests**: a tiny synthetic run proves the critical path creates the key artefacts.”
+* “Devs get **fast feedback** and stable reviews; heavier tests run **nightly** on a fresh synthetic dataset.”
+
 
 ## Repository structure / layout
 ```
@@ -97,8 +104,14 @@ opg-investigations-backlog/
 │   └── analysis_demo.py     # last-year interval analysis by team (non-invasive)
 │   └── distributions.py     # distribution of interval changes by case_type across years
 │   └── cli_nbwrap.py        # ETL, feature eng, models, viz, CLI (Click)
+│   └── encoders.py          # K-Fold target encoder
+│   └── features.py          # preprocessor with TE support
+│   └── modeling.py          # adds advanced logistic pipeline + helpers
+│   └── cli.py               # add two new commands: diagnostics, logit-advanced
+│   └── diagnostics.py       # VIF, correlations, over-dispersion
 ├── tests/                   # Automated unit testing, Pytest unit tests (data & modeling)
 │   └── test_data_quality.py # pytest tests for Data Quality
+│   └── test_logit_pipeline.py # pytest tests for Data Quality
 ├─ .github/
 │   └─ workflows/
 │       └─ ci.yml            # Lint + tests on PRs/commits to main
@@ -110,8 +123,7 @@ opg-investigations-backlog/
 └── ...
 ```
 
-##
-How to use the modules (examples)
+## How to use the modules (examples)
 ```python
 # PREPROCESSING / MANIPULATION / IMPUTATION
 from preprocessing import load_raw, engineer
@@ -136,9 +148,9 @@ yoy_change   = res["yoy_change"]    # year-on-year change in medians by case_typ
 
 ```
 
-## How to run (end-to-end)
-```python
 
+### How to run (end-to-end)
+```bash
 # 0) Activate your venv and install deps
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
@@ -177,12 +189,6 @@ python -m cli_nbwrap run-all \
   --interval-col days_to_alloc \
   --group case_type
 
-pip install -U pip
-pip install -e ".[dev]"
-
-pre-commit install
-
-
 # 2) Generate synthetic data (replace with your real CSV when ready)
 python -m cli generate-data --rows 8000 --out data/raw/synthetic_investigations.csv
 
@@ -202,8 +208,21 @@ python -m cli simulate --csv data/raw/synthetic_investigations.csv --delta-inves
 make lint && make test
 streamlit run app.py
 mkdocs serve
-
 ```
+
+### What each command does (and how it uses your code)
+prep → DATA PRE-PROCESSING / MANIPULATION / IMPUTATION
+Calls your load_raw and engineer functions, writes data/processed/engineered.csv.
+
+intervals → INTERVAL ANALYSIS
+Calls your build_event_log, build_backlog_series, build_daily_panel, summarise_daily_panel. Writes four CSVs.
+
+trend-demo → Demo: last-year interval analysis by team
+Calls your IntervalAnalysis.monthly_trend_last_year(...) through the wrapper.
+
+interval-distribution → Distributions across years by case_type
+Computes per-year stats and YoY deltas for days_to_alloc (or any interval column you pick).
+
 ## implementation (Push to GitHub)
 ```bash
 git init
@@ -548,6 +567,9 @@ After pushing to GitHub:
 
 &nbsp; 
 
+
+
+
 ## Scoping success
 Three questions: backlog drivers, time-to-sign-off, and legal-review propensity. KPIs: MAE for forecasts, C-index for survival, AUC/Brier for classifier. Prioritised interpretability and policy levers (staffing, case mix).
 
@@ -617,24 +639,62 @@ Hierarchical modelling across teams, richer calendar effects, Bayesian uncertain
 
 
 ## Bite-size Objectives
-1. Feature engineering & preprocessing (leak-safe)
+1. **Feature engineering & preprocessing (leak-safe)**
     - Impute + scale numerics, encode categoricals, add optional numeric interactions.
     - Handle high-cardinality categories (e.g., occupation) via K-Fold target encoding (no leakage).
 
-2. Advanced logistic model for legal-review propensity
+2. **Advanced logistic model for legal-review propensity**
     - Elastic-Net Logistic (CV) for stable selection; optional domain interactions.
     - Proper split, metrics (AUC/AP/Brier), probability calibration curve.
 
-3. Diagnostics
+3. **Diagnostics**
     - VIF & correlation snapshot (redundancy).
     - Optional over-dispersion check (GLM viewpoint).
 
-4. CLI tasks
+4. **CLI tasks**
     - New commands to run diagnostics and an advanced logistic pipeline end-to-end.
 
-5. Tests
+5. **Tests**
     - Smoke tests so CI stays green.
 
+
+## A. Break the problem into small objectives
+### A1) **Data layer & clear definitions**
+- Goal: create leak-safe features and time series that policy colleagues can trust.
+- Intervals: days_to_alloc (receipt → investigator allocation), days_to_pg_signoff (receipt → PG signoff).
+- Backlog: daily count of cases not yet allocated (D level), plus M and Y aggregates; case-type slices.
+- Exogenous drivers: per-day investigators_on_duty, n_allocations, case-mix shares, reallocation rate.
+- Outputs: tidy CSVs under data/processed/ for downstream models & simulation.
+
+### A2) Drivers of backlog (explanatory model)
+- Goal: quantify how staffing, case mix, and time affect backlog.
+- Model: Poisson GLM; auto-switch to NegBin on over-dispersion.
+- Effects: elasticities/partial dependence for (investigators_on_duty, case_type, risk, reallocation).
+- Feasibility: “what if” scenarios (step change in staff; counterfactual contributions of other factors).
+
+### A3) Time-to-allocation / PG-signoff (interval outcomes)
+- Goal: which factors accelerate or delay the process?
+- Model: Cox PH survival (handles censoring); check PH visually; hazard ratios by case_type, risk, weighting.
+
+### A4) Time series of backlog (operational forecasting)
+- Goal: short-horizon, explainable forecasts for ops planning.
+- Model: SARIMAX with exogenous (investigators_on_duty, case-mix shares).
+- Backtest: rolling origin; report MAE/MAPE; produce 90-day forecast.
+
+### A5) High-risk applications likely to trigger concerns (prioritisation)
+
+- Goal: score incoming applications to triage verification.
+- Model: (if your upstream app dataset is available) balanced elastic-net logistic; if not yet available, wire a placeholder CLI expecting a CSV with raised_concern target. (Keeps the contract ready.)
+
+### A6) Legal review propensity
+- Goal: which cases are likely to require legal review?
+- Model: elastic-net logistic with target encoding for high-card fields (occupation/team, if needed).
+- Deliverables: AUC/PR-AUC, calibration plot, subgroup fairness by case_type.
+
+### A7) Micro-simulation handoff
+- Goal: parameters for DES/micro-sim.
+- Exports: arrivals per day by case_type; routing probs (→ legal review); service-time distributions (from survival); staffing as a controllable resource; write microsim_inputs/*.csv.
+- 
 &nbsp; 
 
 &nbsp; 
@@ -850,14 +910,207 @@ Calendar features (DOW/holidays), operational features (availability/FTE), deman
 Counts are modelled with **Negative Binomial** (NB) to allow overdispersion. The linear predictor includes fixed effects (weekday/holiday) and random intercepts for investigator/team/role (**partial pooling**). Posterior draws provide 90‑day forecasts with credible intervals.
 
 
+&nbsp; 
 
+&nbsp; 
+
+
+
+## Data Pre-processing, Manipulation, Time Series Analysis, Interval Analysis
+- (prep → intervals → demo → distributions)
+1. Ensure these wrapper modules are present
+    - src/notebook_code.py
+    - src/preprocessing.py
+    - src/intervals.py
+    - src/analysis_demo.py
+    - src/distributions.py
+2. Add the CLI wrapper (if not already added)
+    - src/cli_nbwrap.py
+4. Append this new “all-in-one” command to src/cli_nbwrap.py
+5. output should generate follwoings:
+   - data/processed/engineered.csv, event_log.csv, backlog_series.csv, daily_panel.csv, daily_panel_summary.csv
+   - reports/last_year_by_team.csv (if your IntervalAnalysis API is available)
+   - reports/annual_stats.csv, reports/yoy_change.csv
+   - reports/run_all_summary.md (quick audit note)
+6. Tiny CI smoke test
+   - tests/test_run_all_imports.py
+    ```python
+    def test_cli_nbwrap_imports():
+        import cli_nbwrap as cli
+        assert hasattr(cli, "run_all")
+    ```
+7. What each module does
+- notebook_code.py — a straight lift of all code cells from your Build_Investigator_Daily_from_Raw_12_11_25.ipynb (no changes to logic; only %/! lines commented).
+- preprocessing.py — “DATA PRE-PROCESSING / DATA MANIPULATION / MISSING DATA IMPUTATION” section; simply imports and re-exports your functions such as normalise_col, parse_date_series, hash_id, month_to_season, is_term_month, load_raw, col, engineer.
+- intervals.py — “INTERVAL ANALYSIS” section; re-exports your build_event_log, build_wip_series, build_backlog_series, build_daily_panel, summarise_daily_panel.
+- analysis_demo.py — “Demo: last-year interval analysis by team (non-invasive)”; provides a last_year_by_team(...) function that calls your existing IntervalAnalysis API (if present).
+- distributions.py — “For each casetype and for all of them, find the distribution of time-interval changes over a few years”; gives interval_change_distribution(...) to summarise medians and YoY deltas per case_type using your engineered dates/intervals.
+
+## Variable-selection workflow for logistic regression 
+- **domain-led → leak-safe preprocessing → shrinkage-based selection → interaction sanity checks → robust inference refit → calibration & subgroup evidence.**
+  
+- **variable Selection methodology:**
+I started with a domain-informed set and encoded them in a leak-safe pipeline. I removed/combined redundant predictors (VIF/correlation), added a short, pre-declared list of interactions, and used elastic-net logistic with cross-validation for shrinkage and selection. I retained features that were non-zero and sign-stable across folds and improved CV AUC/calibration. For high-cardinality variables like occupation, I used target encoding or random effects. Finally, I refit a compact GLM for explainability and reported odds ratios with robust SEs, plus calibration and subgroup checks. 
+It balances predictive performance with interpretability and gives concrete keep/drop rules.
+
+0) **Frame it first**
+- Target & metric: binary outcome (e.g., legal review), primary metric AUC/PR-AUC; secondary: calibration (Brier/reliability), subgroup fairness.
+
+- Split: time-based split if predicting the future; otherwise stratified train/valid/test. All choices below happen inside CV on the training data (no leakage).
+
+1) **Build a candidate set (domain + EDA)**
+- Start from a domain-informed list (must-include features).
+- Add plausible proxies and a shortlist of interactions (e.g., risk × case_type, workload × team); apply the hierarchical principle (include main effects if you include an interaction).
+
+**Guardrails:**
+- Dates ⇒ derive intervals (days) not raw dates.
+- Create missingness flags (e.g., risk_missing) for important fields.
+
+2) **Make the design matrix (leak-safe)**
+- Numeric: median impute → standardise.
+- Categorical: One-Hot with reference level (drop='first') or target encoding (nested CV) if very high cardinality.
+- Keep the imputer/encoder inside a Pipeline so they’re fit on train folds only.
+
+3) **Screen for redundancy (don’t overdo it)**
+- Correlation/VIF: if two variables tell the same story (e.g., casetype & weighting), drop one or combine (e.g., priority).
+- If you keep both, consider residualising one on the other (orthogonalise) or rely on ridge/elastic-net to stabilise.
+
+4) **Baseline, then regularised model**
+- Fit a baseline (main effects only) to anchor calibration.
+- Fit Elastic Net logistic (penalty='elasticnet', solver='saga') with CV to shrink and select features (especially after one-hot/interaction expansion).
+- **Keep/drop rules (prediction-first):**
+    - Keep variables with non-zero coefficients selected in most CV folds (stability).
+    - Prefer Elastic Net over pure Lasso when features are correlated.
+    - If occupation/team has many levels, prefer random effects (mixed model) or target encoding; if you must one-hot, use ridge/elastic-net.
+
+5) **Interactions & nonlinearity**
+- Add a small, pre-declared set of interactions/polynomials.
+- Retain only if they improve CV AUC/PR-AUC and remain sign-stable across folds. (You can also use ALE interaction plots as evidence.)
+
+6) **Over-dispersion / clustering checks**
+- In logistic GLM, check Pearson χ² / df and residual clustering by team/occupation.
+- If inflated SEs: report cluster-robust SEs or fit a mixed-effects logistic with a random intercept for the grouping factor.
+
+7) **Final “reporting model”**
+- For explanation, refit a parsimonious GLM (main effects ± a few interactions you kept) on the full training set:
+    - Report odds ratios with 95% CIs (cluster-robust if needed).
+    - Provide calibration (reliability curve) and subgroup metrics.
+- Lock hyperparameters; evaluate once on the held-out test.
+
+- **Regularised, prediction-oriented selection (scikit-learn):**
+```python
+from sklearn.model_selection import StratifiedKFold
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder, StandardScaler, PolynomialFeatures
+from sklearn.impute import SimpleImputer
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import LogisticRegressionCV
+
+num = ["weighting", "days_to_alloc"]
+cat = ["risk", "case_type"]  # keep high-card variables separate or target-encode
+
+num_pipe = Pipeline([
+    ("impute", SimpleImputer(strategy="median")),
+    ("scale", StandardScaler()),
+    # Add sparse interactions among numerics if plausible
+    ("poly", PolynomialFeatures(degree=2, include_bias=False, interaction_only=True))
+])
+
+cat_pipe = Pipeline([
+    ("impute", SimpleImputer(strategy="most_frequent")),
+    ("ohe", OneHotEncoder(drop="first", handle_unknown="ignore"))
+])
+
+pre = ColumnTransformer([
+    ("num", num_pipe, num),
+    ("cat", cat_pipe, cat),
+], remainder="drop")
+
+logit = LogisticRegressionCV(
+    penalty="elasticnet", solver="saga", l1_ratios=[0.1,0.5,0.9],
+    Cs=20, cv=StratifiedKFold(5, shuffle=True, random_state=42),
+    scoring="roc_auc", max_iter=5000, n_jobs=-1
+)
+
+pipe = Pipeline([("pre", pre), ("clf", logit)]).fit(X_train, y_train)
+
+```
+
+- **Explainable refit (statsmodels, after selecting variables):**
+```python
+import statsmodels.formula.api as smf
+
+# Example: keep main effects + one interaction that proved useful
+m = smf.glm(
+    "y ~ weighting + days_to_alloc + risk + case_type + risk:case_type",
+    data=train_df, family=smf.families.Binomial()
+).fit(cov_type="HC3")  # or cluster={"groups": train_df["occupation"]}
+print((m.params).apply(lambda b: (b, np.exp(b))))  # log-odds and odds ratios
+
+```
+
+
+
+
+&nbsp; 
+
+
+- encoders.py — A leak-safe K-Fold target encoder for high-cardinality categoricals (e.g., occupation).
+    - It computes means on each training fold only and maps them to the validation fold; at inference it uses a smoothed global mapping.
+
+- features.py — Build a ColumnTransformer that:
+    - imputes/scales numerics and optionally adds numeric interactions,
+    - one-hot encodes moderate-card categoricals, and
+    - target-encodes high-card columns (e.g., occupation if present).
+
+- modeling.py — Add an advanced logistic pipeline (Elastic-Net), plus helpers for calibration and coefficient export.
+(Existing GLM/backlog/survival code can remain—this adds to it.)
+  
+- diagnostics.py — Quick VIF & correlation helpers (run from CLI; VIF on numerics; correlation on selected fields).
+    - **VIF/correlation to address multicollinearity; you can drop/combine features if VIFs are high.**
+
+- test_logit_pipeline.py — Keeps CI happy and proves the pipeline fits and predicts.
+
+How to run (end-to-end)
+```bash
+# After you replace/add files above and install requirements:
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+pre-commit install
+
+# Generate data (or use your real CSV)
+python -m g7_assessment.cli generate-data --rows 8000 --out data/raw/synthetic_investigations.csv
+
+# Diagnostics (VIF/correlation)
+python -m g7_assessment.cli diagnostics --csv data/raw/synthetic_investigations.csv
+
+# Advanced logistic model
+python -m g7_assessment.cli logit-advanced --csv data/raw/synthetic_investigations.csv
+
+# Check outputs
+ls reports/   # calibration plot + diagnostics
+ls models/    # joblib + metrics csv
+pytest -q     # quick tests
+```
+
+
+&nbsp; 
+
+&nbsp; 
+
+<a name="future"></a>
 # Future Work
 - **AI‑driven hybrid**: emulator (GP), Bayesian optimisation and causal survival scaffold.
 - **Streamlit UI** for non‑coders.
 - Extra **CI** (CodeQL, Dependabot, pip‑audit, stale, release‑please).
 - Expanded docs on **AI & Optimisation** and non‑black‑box governance.
 
-## Licensing
+&nbsp; 
+
+&nbsp; 
+
+<a name="licence"></a>
+# Licensing
 - **Code**: MIT (`LICENSE`).
 - **Docs & non‑code**: Open Government Licence v3 (`docs/DATA_LICENSE.md`).
 

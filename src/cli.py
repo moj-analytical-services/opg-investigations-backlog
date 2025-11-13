@@ -88,6 +88,58 @@ def simulate(csv, delta_investigators):
     out = pd.DataFrame({"date": glm_df["date"], "baseline": base_pred, "scenario": scn_pred})
     out.to_csv(REPORTS_DIR / "scenario_vs_baseline.csv", index=False)
     click.echo(f"Mean change in backlog with Δinvestigators={delta_investigators}: {effect:.2f} cases/day (negative is good).")
-    
+
+@cli.command()
+@click.option("--csv", type=click.Path(exists=True, dir_okay=False), required=True)
+def diagnostics(csv):
+    """
+    Run quick diagnostics: VIF (numerics) and correlation snapshot.
+    Saves to reports/.
+    """
+    import pandas as pd
+    from .config import REPORTS_DIR
+    from .data import load_data, basic_clean, engineer_intervals
+    from .diagnostics import vif_for_numeric, corr_table
+
+    df = engineer_intervals(basic_clean(load_data(Path(csv))))
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Choose numeric columns that generally exist in the project
+    num_cols = [c for c in ["weighting", "days_to_alloc"] if c in df.columns]
+    if num_cols:
+        vif_df = vif_for_numeric(df, num_cols)
+        vif_df.to_csv(REPORTS_DIR / "vif_numeric.csv", index=False)
+
+    # Correlation among a small stable set
+    corr_cols = [c for c in ["weighting", "days_to_alloc"] if c in df.columns]
+    if len(corr_cols) >= 2:
+        corr = corr_table(df, corr_cols)
+        corr.to_csv(REPORTS_DIR / "corr_numeric.csv")
+
+    click.echo("Diagnostics written to reports/")
+
+@cli.command(name="logit-advanced")
+@click.option("--csv", type=click.Path(exists=True, dir_okay=False), required=True)
+def logit_advanced(csv):
+    """
+    Train advanced elastic-net logistic model for legal review propensity.
+    Saves pipeline + metrics + calibration plot into models/.
+    """
+    import pandas as pd
+    from .config import MODELS_DIR, REPORTS_DIR
+    from .data import load_data, basic_clean, engineer_intervals
+    from .modeling import fit_legal_review_logit_enet, save_calibration_plot, export_model_and_report
+
+    df = engineer_intervals(basic_clean(load_data(Path(csv))))
+    pipe, metrics, Xte, yte = fit_legal_review_logit_enet(df)
+
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    export_model_and_report(pipe, metrics, MODELS_DIR)
+
+    # Save calibration curve
+    cal_png = REPORTS_DIR / "legal_review_enet_calibration.png"
+    save_calibration_plot(metrics["calibration_mean_pred"], metrics["calibration_frac_pos"], cal_png)
+    click.echo("Advanced logistic model, metrics, and calibration saved.")
+
 if __name__ == "__main__":
     cli()
