@@ -1,0 +1,55 @@
+name: Nightly Run-All
+
+on:
+  schedule:
+    # Every day at 03:00 UTC (04:00/03:00 UK depending on DST)
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # OPTIONAL: if your data is not in the repo, fetch it here (e.g., from a secure store).
+      # - name: Retrieve raw data
+      #   run: |
+      #     # e.g., aws s3 cp s3://bucket/path/raw.csv data/raw/raw.csv
+      #   env:
+      #     AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      #     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      #     AWS_DEFAULT_REGION: eu-west-2
+
+      - name: Ensure sample data exists
+        run: |
+          mkdir -p data/raw
+          if [ ! -f "data/raw/sample_raw.csv" ] && [ ! -f "data/raw/raw.csv" ]; then
+            echo "ERROR: Provide data/raw/raw.csv or data/raw/sample_raw.csv in the repo (or add a fetch step)."
+            exit 1
+          fi
+
+      - name: Run pipeline (uses your notebook logic via cli_nbwrap)
+        run: |
+          RAW="data/raw/raw.csv"
+          if [ ! -f "$RAW" ]; then RAW="data/raw/sample_raw.csv"; fi
+          python -m g7_assessment.cli_nbwrap run-all --raw "$RAW" --outbase .
+
+      - name: Upload artifacts (reports + processed)
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-artifacts
+          path: |
+            reports/**
+            data/processed/**
+          if-no-files-found: warn

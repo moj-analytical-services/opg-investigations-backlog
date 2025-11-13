@@ -1,0 +1,30 @@
+name: Nightly Microsim Export
+
+on:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+          mkdir -p data/raw
+          if [ ! -f "data/raw/sample_raw.csv" ] && [ ! -f "data/raw/raw.csv" ]; then
+            echo "ERROR: Provide data/raw/raw.csv or data/raw/sample_raw.csv"; exit 1
+          fi
+          RAW="data/raw/raw.csv"; if [ ! -f "$RAW" ]; then RAW="data/raw/sample_raw.csv"; fi
+          python -m cli_nbwrap prep --raw "$RAW" --outdir data/processed
+          python -m cli microsim-export --csv data/processed/engineered.csv --outdir data/processed/microsim_inputs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: microsim-inputs
+          path: data/processed/microsim_inputs/**
+          if-no-files-found: warn

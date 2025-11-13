@@ -74,3 +74,19 @@ def run_all(raw_csv: str, outbase: str, interval_col: str, group: str):
     )
 
     click.echo(f"✅ Completed. Outputs in:\n  {data_dir}\n  {rep_dir}")
+
+# --- Synthetic data generator passthrough (optional convenience) ---
+@cli.command(name="gen-synth")
+@click.option("--rows", type=int, default=20000, show_default=True)
+@click.option("--start", "start_date", type=str, default="2022-01-01", show_default=True)
+@click.option("--span", "days_span", type=int, default=1200, show_default=True)
+@click.option("--seed", type=int, default=7, show_default=True)
+@click.option("--out", "out_csv", type=click.Path(dir_okay=False), default="data/raw/synthetic_investigations.csv", show_default=True)
+def gen_synth(rows, start_date, days_span, seed, out_csv):
+    """Generate synthetic investigations and write to CSV (uses synth.generate_synthetic)."""
+    from .synth import generate_synthetic
+    from pathlib import Path
+    df = generate_synthetic(n_rows=rows, start_date=start_date, days_span=days_span, seed=seed)
+    out = Path(out_csv); out.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(out, index=False)
+    click.echo(f"Wrote: {out} (rows={len(df):,})")

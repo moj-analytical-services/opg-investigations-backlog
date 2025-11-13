@@ -285,6 +285,115 @@ git commit -m "Remove data folder from tracking per .gitignore"
 python src/analyzers.py
 ```
 
+## GitHub Actions setup to schedule CI to run the full pipline
+### Nightly CI to run the full pipeline
+a one-liner Makefile target (make run-all) or wire this into your GitHub Actions so the pipeline runs on a nightly schedule against a sample dataset.
+1. Makefile (repo root) 
+2. Nightly CI to run the full pipeline (.github/workflows/nightly-run-all.yml)
+- Notes
+If your real raw data cannot live in the repo, uncomment the “Retrieve raw data” step and pull from a secure store using GitHub Secrets.
+Otherwise, commit a small data/raw/sample_raw.csv and the workflow will use it.
+
+### Nightly micro-simulation export
+As already added the microsim-export command earlier, you can schedule it too.
+- .github/workflows/nightly-microsim.yml
+
+### Running the full pipeline (help the team to run it easily)
+```bash
+make setup
+make run-all RAW=data/raw/raw.csv
+# or, if you committed a small sample:
+make run-all RAW=data/raw/sample_raw.csv
+```
+
+#### Output files
+data/processed/engineered.csv, event_log.csv, backlog_series.csv, daily_panel.csv, daily_panel_summary.csv
+reports/last_year_by_team.csv, annual_stats.csv, yoy_change.csv, run_all_summary.md
+
+### Nightly CI (example)
+- A scheduled workflow (.github/workflows/nightly-run-all.yml) runs the pipeline at 03:00 UTC and uploads artifacts.
+---
+
+## Sanity checklist
+
+- [ ] You’ve already added the **wrappers** and **CLI** (`src/g7_assessment/cli_nbwrap.py`) I provided earlier.  
+- [ ] Add this **Makefile** at repo root.  
+- [ ] Add the **nightly** workflows under `.github/workflows/`.  
+- [ ] Ensure **`data/raw/raw.csv`** (real) or **`data/raw/sample_raw.csv`** (toy) is present or retrievable.  
+- [ ] Push to GitHub → check **Actions** → artifacts contain `reports/` & `data/processed/`.
+
+## Synthetic data generator + an updated nightly workflow
+- This self-generates data, runs the pipeline against it, and publishes artifacts, keeping everything reproducible and policy-safe without relying on a checked-in sample.
+
+1. creates a fresh dataset every night and then runs your full pipeline.
+    - src/synth.py
+2. Add a CLI command to produce the CSV (optional but handy)
+    - src/cli_nbwrap.py
+3. Update the nightly workflow to use the generator
+4. Replace: .github/workflows/nightly-run-all.yml with this:
+```yaml
+name: Nightly Run-All (Synthetic)
+
+on:
+  schedule:
+    - cron: "0 3 * * *"   # 03:00 UTC daily
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Generate fresh synthetic dataset
+        run: |
+          # Option A: call the synth module directly
+          python -m synth --rows 25000 --start 2022-01-01 --span 1400 --seed $RANDOM --out data/raw/synthetic_investigations.csv
+          # Option B (equivalent): via the wrapper CLI
+          # python -m cli_nbwrap gen-synth --rows 25000 --out data/raw/synthetic_investigations.csv
+
+      - name: Run full pipeline on synthetic data
+        run: |
+          python -m cli_nbwrap run-all \
+            --raw data/raw/synthetic_investigations.csv \
+            --outbase .
+
+      - name: Upload artifacts (reports + processed)
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-artifacts
+          path: |
+            reports/**
+            data/processed/**
+          if-no-files-found: warn
+
+```
+
+4. (Optional) Makefile helper
+    - Append to your root Makefile:
+    ```
+    synth:
+    	. $(VENV)/bin/activate && $(PY) -m g7_assessment.synth --rows 20000 --out data/raw/synthetic_investigations.csv
+    
+    ```
+
+    - Run locally with:
+    ```bash
+    make setup
+    make synth
+    make run-all RAW=data/raw/synthetic_investigations.csv
+    ```
+
 &nbsp; 
 
 &nbsp;
