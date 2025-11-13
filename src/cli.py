@@ -141,5 +141,112 @@ def logit_advanced(csv):
     save_calibration_plot(metrics["calibration_mean_pred"], metrics["calibration_frac_pos"], cal_png)
     click.echo("Advanced logistic model, metrics, and calibration saved.")
 
+@cli.command()
+@click.option("--csv", type=click.Path(exists=True, dir_okay=False), required=True)
+def diagnostics(csv):
+    """Write VIF & correlation diagnostics to reports/."""
+    from .config import REPORTS_DIR
+    from .data import load_data, basic_clean, engineer_intervals
+    from .diagnostics import vif_for_numeric, corr_table
+
+    df = engineer_intervals(basic_clean(load_data(Path(csv))))
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    num_cols = [c for c in ["weighting","days_to_alloc"] if c in df.columns]
+    if num_cols:
+        vif_for_numeric(df, num_cols).to_csv(REPORTS_DIR / "vif_numeric.csv", index=False)
+        corr_table(df, num_cols).to_csv(REPORTS_DIR / "corr_numeric.csv")
+    click.echo("Diagnostics saved to reports/.")
+
+@cli.command(name="legal-review-advanced")
+@click.option("--csv", type=click.Path(exists=True, dir_okay=False), required=True)
+def legal_review_advanced(csv):
+    """Train elastic-net legal review model; save pipeline, metrics, calibration curve."""
+    from .config import REPORTS_DIR, MODELS_DIR
+    from .data import load_data, basic_clean, engineer_intervals
+    from .modeling import fit_legal_review_enet
+    import matplotlib.pyplot as plt
+    df = engineer_intervals(basic_clean(load_data(Path(csv))))
+    pipe, metrics = fit_legal_review_enet(df)
+    from joblib import dump
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    dump(pipe, MODELS_DIR / "legal_review_enet.joblib")
+    pd.Series(metrics).to_csv(MODELS_DIR / "legal_review_enet_metrics.csv")
+    # Calibration curve
+    fig, ax = plt.subplots(figsize=(5,4))
+    ax.plot(metrics["calibration_mean_pred"], metrics["calibration_frac_pos"], marker="o")
+    ax.plot([0,1],[0,1],"--")
+    ax.set_title("Calibration"); ax.set_xlabel("Mean predicted prob"); ax.set_ylabel("Fraction positives")
+    fig.tight_layout(); fig.savefig(REPORTS_DIR / "legal_review_enet_calibration.png", dpi=160)
+    click.echo("Saved legal review model & metrics.")
+
+@cli.command(name="backlog-drivers")
+@click.option("--csv", type=click.Path(exists=True, dir_okay=False), required=True)
+@click.option("--delta", type=int, default=5, help="Step change in investigators_on_duty for scenario.")
+def backlog_drivers(csv, delta):
+    """Fit GLM drivers for backlog and run a staffing scenario; write scenario CSV."""
+    from .config import REPORTS_DIR
+    from .data import load_data, basic_clean, engineer_intervals, daily_backlog_series, aggregate_staffing
+    from .modeling import fit_backlog_glm, scenario_staffing_effect
+
+    df = engineer_intervals(basic_clean(load_data(Path(csv))))
+    daily = daily_backlog_series(df)              # uses receipt→allocation interval
+    staff = aggregate_staffing(df)
+    glm, design = fit_backlog_glm(daily, staff)
+
+    base = glm.fittedvalues
+    scen = scenario_staffing_effect(glm, design, delta)
+    out = pd.DataFrame({"date": design["date"], "baseline": base, "scenario": scen})
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    out.to_csv(REPORTS_DIR / f"glm_staffing_scenario_delta{delta}.csv", index=False)
+    click.echo("Backlog drivers & scenario saved.")
+
+@cli.command(name="tsa-forecast")
+@click.option("--csv", type=click.Path(exists=True, dir_okay=False), required=True)
+@click.option("--days", type=int, default=90)
+def tsa_forecast(csv, days):
+    """SARIMAX forecast of backlog with exogenous drivers."""
+    from .config import REPORTS_DIR
+    from .data import load_data, basic_clean, engineer_intervals, daily_backlog_series, aggregate_staffing
+    from .timeseries import fit_backlog_sarimax, forecast_sarimax
+    df = engineer_intervals(basic_clean(load_data(Path(csv))))
+    daily = daily_backlog_series(df)
+    staff = aggregate_staffing(df)
+    hist = daily.merge(staff, on="date", how="left").fillna({"investigators_on_duty":0,"n_allocations":0})
+    m, design = fit_backlog_sarimax(hist)
+    fc = forecast_sarimax(m, design, days=days)
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    fc.to_csv(REPORTS_DIR / f"sarimax_forecast_{days}d.csv", index=False)
+    click.echo("Forecast saved.")
+
+@cli.command(name="microsim-export")
+@click.option("--csv", type=click.Path(exists=True, dir_okay=False), required=True,
+              help="Path to investigations CSV (real or synthetic).")
+@click.option("--outdir", type=click.Path(file_okay=False), default="data/processed/microsim_inputs",
+              help="Output directory for simulation inputs.")
+def microsim_export(csv, outdir):
+    """
+    Build micro-simulation input bundle:
+      - arrivals_daily.csv / arrivals_monthly.csv
+      - backlog_daily.csv
+      - staffing_daily.csv
+      - service_time_quantiles_pg_signoff.csv
+      - routing_legal_review.csv
+      - metadata.json
+    """
+    from pathlib import Path
+    import pandas as pd
+    from .data import load_data, basic_clean, engineer_intervals
+    from .microsim import write_microsim_bundle
+
+    # 1) Load & clean (lower-cased columns, dates parsed, booleans normalised)
+    df = load_data(Path(csv))
+    df = basic_clean(df)
+    df = engineer_intervals(df)   # adds days_to_* and event flags; derives needs_legal_review if dates present
+
+    # 2) Write bundle
+    meta = write_microsim_bundle(df, Path(outdir))
+    click.echo(f"Micro-simulation inputs written to: {outdir}")
+    click.echo(f"Summary: {meta}")
+    
 if __name__ == "__main__":
     cli()

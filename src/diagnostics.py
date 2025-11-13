@@ -17,8 +17,10 @@ def vif_for_numeric(df: pd.DataFrame, cols):
     for i, c in enumerate(X.columns):
         if c == "const":
             continue
-        vifs.append((c, variance_inflation_factor(X.values, i)))
-    return pd.DataFrame(vifs, columns=["feature", "vif"])
+        rows.append({"feature": c, "vif": variance_inflation_factor(X.values, i)})
+    return pd.DataFrame(rows)
+    #     vifs.append((c, variance_inflation_factor(X.values, i)))
+    # return pd.DataFrame(vifs, columns=["feature", "vif"])
 
 def corr_table(df: pd.DataFrame, cols):
     """

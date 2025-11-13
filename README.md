@@ -946,6 +946,8 @@ Counts are modelled with **Negative Binomial** (NB) to allow overdispersion. The
 - analysis_demo.py — “Demo: last-year interval analysis by team (non-invasive)”; provides a last_year_by_team(...) function that calls your existing IntervalAnalysis API (if present).
 - distributions.py — “For each casetype and for all of them, find the distribution of time-interval changes over a few years”; gives interval_change_distribution(...) to summarise medians and YoY deltas per case_type using your engineered dates/intervals.
 
+- timeseries.py — SARIMAX backlog forecasting with exogenous drivers (staffing, case mix)
+- timeseries.py —
 ## Variable-selection workflow for logistic regression 
 - **domain-led → leak-safe preprocessing → shrinkage-based selection → interaction sanity checks → robust inference refit → calibration & subgroup evidence.**
   
@@ -1079,13 +1081,13 @@ pip install -r requirements.txt
 pre-commit install
 
 # Generate data (or use your real CSV)
-python -m g7_assessment.cli generate-data --rows 8000 --out data/raw/synthetic_investigations.csv
+python -m cli generate-data --rows 8000 --out data/raw/synthetic_investigations.csv
 
 # Diagnostics (VIF/correlation)
-python -m g7_assessment.cli diagnostics --csv data/raw/synthetic_investigations.csv
+python -m cli diagnostics --csv data/raw/synthetic_investigations.csv
 
 # Advanced logistic model
-python -m g7_assessment.cli logit-advanced --csv data/raw/synthetic_investigations.csv
+python -m cli logit-advanced --csv data/raw/synthetic_investigations.csv
 
 # Check outputs
 ls reports/   # calibration plot + diagnostics
@@ -1093,11 +1095,132 @@ ls models/    # joblib + metrics csv
 pytest -q     # quick tests
 ```
 
+## C. How each task is addressed (techniques & code)
+
+### C1) Backlog drivers (explanatory; feasibility)
+- Technique: GLM (Poisson→NegBin) with investigators_on_duty, n_allocations, time trend t.
+- Why: interpretable log-rate ratios; NegBin handles over-dispersion.
+- Feasibility: run step change scenarios (e.g., Δ=+5 investigators). Compare baseline vs scenario series (CSV written).
+- Run it
+python -m g7_assessment.cli backlog-drivers --csv data/raw/synthetic_investigations.csv --delta 10
+
+### C2) Time-to-PG-signoff (interval)
+- Technique: Cox PH with OHE for case_type, risk, weighting.
+- Why: handles censoring (open cases); hazard ratios are policy-friendly (e.g., “High risk ↗ hazard by 30%”).
+- Where: function fit_survival_pg in modeling.py.
+
+### C3) Forecasting backlog (daily → 90 days)
+- Technique: SARIMAX with weekly seasonality (7) and exog drivers (investigators_on_duty, n_allocations).
+- Why: captures autocorrelation/seasonality + allows scenarios on exogenous paths.
+- Run
+python -m g7_assessment.cli tsa-forecast --csv data/raw/synthetic_investigations.csv --days 90
+
+### C4) High-risk applications (triage)
+- Technique: elastic-net logistic with leak-safe preprocessing and target encoding for high-card variables (e.g., occupation).
+- Why: balances sparsity & stability; TE avoids exploding one-hot columns and leakage.
+- Run (legal review model as example)
+python -m g7_assessment.cli legal-review-advanced --csv data/raw/synthetic_investigations.csv
+
+### C5) Diagnostics & multicollinearity
+- Technique: VIF on numerics and pairwise correlations; drop/merge highly redundant predictors (or keep both but rely on ridge/elastic-net).
+- Run
+python -m g7_assessment.cli diagnostics --csv data/raw/synthetic_investigations.csv
+
+### C6) Micro-simulation handoff (what to export)
+From the code above, you already get:
+- Arrivals/backlog: reports/ forecast & historical daily counts (input for arrival processes).
+- Service-time: survival model outputs (export duration quantiles/hazard by case_type/risk for DES).
+- Routing: legal-review probability by slice (case_type, risk).
+- Staffing: aggregate_staffing daily series (resource availability).
+
+
+## D. Line-by-line code comments (example: elastic-net legal review)
+```python
+# Build preprocessing (impute/scale/OHE/TE) and fit a regularised logistic classifier
+pre = build_preprocessor(df, y_name=y_name)      # <-- ColumnTransformer: numerics + cats + KFold target encoding
+clf = LogisticRegressionCV(                      # <-- Cross-validated logistic regression
+    penalty="elasticnet", solver="saga",         #     Use SAGA to support elastic-net
+    l1_ratios=[0.1,0.5,0.9], Cs=20,              #     Grid over L1/L2 mix and regularisation strength
+    cv=StratifiedKFold(5, shuffle=True, random_state=random_state),
+    scoring="roc_auc", max_iter=5000, n_jobs=-1, class_weight="balanced"  # <-- robust to class imbalance
+)
+pipe = Pipeline([("pre", pre), ("clf", clf)])    # <-- Single pipeline = leak-safe training & inference
+
+Xtr, Xte, ytr, yte = train_test_split(           # <-- Hold-out test for unbiased evaluation
+    X, y, test_size=0.2, stratify=y, random_state=random_state
+)
+pipe.fit(Xtr, ytr)                                # <-- Fits transformers on Xtr only (no leakage)
+
+yprob = pipe.predict_proba(Xte)[:, 1]            # <-- Probabilities for metrics & thresholding
+auc = roc_auc_score(yte, yprob)                  # <-- Discrimination
+ap = average_precision_score(yte, yprob)         # <-- Precision-recall (good for rare outcomes)
+brier = brier_score_loss(yte, yprob)             # <-- Calibration
+frac_pos, mean_pred = calibration_curve(yte, yprob, n_bins=10, strategy="uniform")  # <-- Reliability curve
+```
+
+## E. Suggested talking points (policy-friendly)
+- Staffing is influential, but not alone. GLM shows the marginal effect of investigators; we also quantify effects from case mix and reallocation. Feasibility scenarios show expected reduction per Δ staff.
+
+- Interval reduction levers. Cox PH indicates which case types/risks prolong allocation/sign-off; those become process improvement targets.
+
+- Operational forecasts. SARIMAX gives 90-day backlog trajectories with CI; planners can test what-ifs on staffing.
+
+- Triage for verification. Elastic-net model identifies high-risk applications (and legal review propensity) to prioritise checks before cases become backlog.
+
+- Simulation-ready. We export rates, distributions, and routing probabilities for a micro-simulation to test policy packages end-to-end.
+&nbsp; 
+
+## What this adds to the simulation model as input
+- We export a small, consistent set of CSVs (under data/processed/microsim_inputs/) that your simulation can consume:
+    - Arrivals of new concerns (investigation cases) by day and by month, split by case_type.
+    - Backlog history by day (for initial conditions / validation).
+    - Staffing series by day (investigators_on_duty, n_allocations).
+    - Service-time distributions (time from receipt → PG sign-off) as Kaplan–Meier quantiles by case_type×risk (handles censoring).
+    - Routing probabilities to legal review by case_type×risk.
+    - A small metadata.json (timestamp, record counts) for auditability.
+
+- microsim.py —
+    - Purpose: Create CSV inputs for a downstream discrete-event / micro-simulation.
+    - Exports arrivals, backlog, staffing, service-time quantiles (KM), and legal-review routing.
+
+- test_microsim.py
+### How to run
+```bash
+# 0) Install deps and pre-commit (if not already)
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+pre-commit install
+
+# 1) Generate synthetic data (or point to your real CSV)
+python -m g7_assessment.cli generate-data --rows 8000 --out data/raw/synthetic_investigations.csv
+
+# 2) Export micro-sim inputs
+python -m g7_assessment.cli microsim-export --csv data/raw/synthetic_investigations.csv --outdir data/processed/microsim_inputs
+
+# 3) Inspect outputs
+ls data/processed/microsim_inputs
+# arrivals_daily.csv, arrivals_monthly.csv, backlog_daily.csv, staffing_daily.csv,
+# service_time_quantiles_pg_signoff.csv, routing_legal_review.csv, metadata.json
+
+# 4) (Optional) Run tests
+pytest -q
+```
+
+### Why these choices (to explain to stakeholders)
+
+- Arrivals & backlog: provide the base demand and starting WIP for the simulator, sliced by case_type to capture mix.
+
+- Staffing: a controllable resource in DES; the time series allows you to replay historical staffing or inject scenarios.
+
+- Service-time distributions (KM): robust to right-censoring (open cases), so quantiles aren’t biased low.
+
+- Routing to legal review: turns into a simple branch probability in the simulator; stratifying by case_type×risk keeps it policy-relevant.
+
+- Metadata: makes runs auditable.
 
 &nbsp; 
 
 &nbsp; 
-
 <a name="future"></a>
 # Future Work
 - **AI‑driven hybrid**: emulator (GP), Bayesian optimisation and causal survival scaffold.
