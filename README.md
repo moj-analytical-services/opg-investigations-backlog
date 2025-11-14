@@ -1192,10 +1192,10 @@ pip install -r requirements.txt
 pre-commit install
 
 # 1) Generate synthetic data (or point to your real CSV)
-python -m g7_assessment.cli generate-data --rows 8000 --out data/raw/synthetic_investigations.csv
+python -m cli generate-data --rows 8000 --out data/raw/synthetic_investigations.csv
 
 # 2) Export micro-sim inputs
-python -m g7_assessment.cli microsim-export --csv data/raw/synthetic_investigations.csv --outdir data/processed/microsim_inputs
+python -m cli microsim-export --csv data/raw/synthetic_investigations.csv --outdir data/processed/microsim_inputs
 
 # 3) Inspect outputs
 ls data/processed/microsim_inputs
@@ -1219,6 +1219,110 @@ pytest -q
 - Metadata: makes runs auditable.
 
 &nbsp; 
+
+
+# 1) Forecasting incoming investigations (medium–long term)
+
+**Short answer:** Yes—both can be used, but for medium–long-term forecasts of incoming investigations, a **Bayesian predictive model (with an explicit lag component inside it)** is the stronger primary approach. A “pure” lag-distribution is a great ingredient, not the whole meal.
+
+## What each method does
+
+### Lag-distribution models (two common uses)
+
+* **Delay/convolution kernel:** today’s investigations are earlier *exposures* convolved with a delay distribution:
+  ( y_t \approx \sum_{k=0}^{K} p_k \cdot \text{exposure}_{t-k} ), with (p_k \ge 0, \sum p_k = 1).
+* **Distributed-lag regression:** regress ( y_t ) on several lagged covariates (seasonality, drivers) over multiple months.
+
+**Strengths:** simple, interpretable delays; fast; great for nowcasting when a single upstream flow dominates.
+**Limitations:** relies on separate forecasting of upstream flows; brittle with structural change; struggles with multiple interacting drivers.
+
+### Bayesian predictive modelling (hierarchical dynamic counts)
+
+Model arrivals directly as a probabilistic time series with covariates:
+
+* **Likelihood:** Negative Binomial (over-dispersed counts) or Poisson-Gamma.
+* **Linear predictor:**
+  [
+  \log \lambda_{t,g}
+  = \underbrace{\text{local trend/level}}_{\text{state space}}
+
+  * \underbrace{\text{seasonality (weekly, annual)}}_{\text{Fourier}}
+  * \beta^\top X_{t,g}
+  * \underbrace{\sum_{k=0}^{K}\gamma_k,\text{exposure}*{t-k}}*{\text{lag kernel}}
+  * \varepsilon_{t,g}
+    ]
+    with (g) for team/case type; (X_{t,g}) can include concern types, pipeline signals, risk flags, staffing, legal markers, etc.
+
+**Why it fits:** handles multiple drivers and their lags; yields calibrated uncertainty; partial pooling stabilises small groups; supports scenario analysis.
+
+## Which is better for this objective?
+
+> **Bayesian hierarchical dynamic count model with an embedded lag kernel** (primary choice).
+
+Use the lag distribution **inside** the Bayesian model to capture realistic delays (e.g., concern → investigation).
+
+## Quick decision guide
+
+* **Strong upstream exposure + stable delay + short horizon?** Lag kernel baseline is fine.
+* **Medium/long horizon, factor attribution, multiple teams/case types, need uncertainty?** Bayesian hierarchical DGLM with lag kernel.
+
+## Practical next steps
+
+1. Define weekly (y_{t,g}) = new investigations by team/case type.
+2. Build upstream exposure series (E_t) (e.g., concerns/referrals).
+3. Fit hierarchical NegBin state-space with Fourier seasonality, covariates (X_{t,g}), and regularised lag kernel on (E_{t-k}).
+4. Validate with rolling-origin backtests (MASE/CRPS) + posterior predictive checks.
+5. Deliver factor effects, forecast distributions, and scenario runs.
+6. Feed predictive draws into your backlog micro-simulation alongside separately estimated duration/transition hazards.
+
+**Bottom line:** treat the **lag distribution as a component**, and the **Bayesian model as the container**—that combination best matches your data richness and planning needs.
+
+---
+
+# 2) Breaking the forecast down by case type (risk/complexity)
+
+**Short answer:** Both methods can work, but for forecasting **by case type**, a **Bayesian hierarchical model (optionally with lag components)** is the better primary choice. A “pure” lag-distribution is best kept as a feature or baseline.
+
+## Why Bayesian wins for case-type breakdowns
+
+* **Partial pooling for sparse/rare types:** shares strength across types/teams so small categories are stable.
+* **Coherent splits:** joint modelling (e.g., logistic-normal or Dirichlet-multinomial) can ensure type-level forecasts sum to the total.
+* **Richer drivers & interactions:** include seasonality, policy/staffing effects, upstream signals, and per-type lag kernels.
+* **Better uncertainty:** credible intervals for both totals and types; calibratable via posterior predictive checks.
+* **Robust to drift/structural change:** state-space components and priors cushion redefinitions of “risk/complexity.”
+
+## When a lag-distribution is enough
+
+Use it if you have **reliable, leading per-type exposure series** and a **stable delay** from exposure → investigation. It’s transparent and fast for near-term nowcasting, but:
+
+* struggles with sparse types,
+* is brittle under classification changes or shifting delays, and
+* doesn’t guarantee totals = sum of categories without extra reconciliation.
+
+## Modelling patterns (pick one)
+
+### Top-down, coherent composition *(recommended for reporting)*
+
+1. Forecast total arrivals (N_t) with a Bayesian dynamic NegBin.
+2. Forecast category shares (\boldsymbol{\pi}*t) with a **logistic-normal** or **Dirichlet-multinomial** regression:
+   (\text{logit}(\pi*{t,c}) = \alpha_c + s_c(t) + \beta_c^\top X_t + \sum_{k=0}^{K}\gamma_{c,k} E_{t-k} + \epsilon_{t,c}).
+3. Draw (\mathbf{y}_t \sim \text{Multinomial}(N_t, \boldsymbol{\pi}_t)) for coherent splits.
+
+### Bottom-up, hierarchical counts *(simple to fit)*
+
+For each type (c): (y_{t,c} \sim \text{NegBin}(\lambda_{t,c})),
+(\log \lambda_{t,c} = \mu_c + s_c(t) + \beta_c^\top X_t + \sum_{k}\gamma_{c,k} E_{t-k} + \eta_{t,c}),
+with hierarchical priors over (\mu_c, \beta_c, \gamma_{c,\cdot}).
+Sum draws for totals (optionally reconcile to enforce coherence).
+
+**Include lag kernels** (\gamma_{c,k}) if you have upstream signals; otherwise trend/seasonality + covariates still perform well.
+
+## Decision rule
+
+* **Medium–long horizon, sparse categories, need calibrated intervals and coherent splits?** → **Bayesian hierarchical** (top-down composition or bottom-up with reconciliation), with lagged exposures as features.
+* **Strong per-type leading indicators + stable delays + short horizon?** → Lag-distribution baseline; keep a Bayesian model for robustness.
+
+**Bottom line:** use the lag distribution as a **feature**; the **Bayesian hierarchical framework** is the right container for accurate, coherent, and well-calibrated forecasts by risk/complexity.
 
 &nbsp; 
 <a name="future"></a>

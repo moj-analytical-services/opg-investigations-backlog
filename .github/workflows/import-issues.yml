@@ -1,0 +1,19 @@
+name: Import Issues
+on:
+  workflow_dispatch:
+    inputs:
+      file_path:
+        description: 'Path to the issue file'
+        required: true
+        default: 'issues_action.csv'
+jobs:
+  import-issues:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Import Issues
+        uses: dsanchezcr/issue-importer-action@v1.0.0
+        with:
+          file-path: ${{ github.event.inputs.file_path }}
+          file-format: csv
+          github-token: ${{ secrets.GITHUB_TOKEN }}
