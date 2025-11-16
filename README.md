@@ -549,6 +549,62 @@ After pushing to GitHub:
 2. In **Settings → Pages**, set Source to **Deploy from a branch** and select the `gh-pages` branch, `/ (root)`.
 3. Your site will publish at: `https://moj-analytical-services.github.io/opg-investigations-backlog/`.
 
+## DS-focused set of SLAs and WIP limits in OPG/MoJ portfolio
+
+### SLAs (what “good” looks like)
+- Dashboards (Investigations, LPA, Deputyship, Supervision)
+- Data freshness: by 06:00 UK daily (≥ 99% days/month).
+- Availability: ≥ 99.5% render success (7-day rolling).
+- p95 load time: < 3s.
+
+### Forecasts (monthly)
+- Publish: by 5th working day each month.
+- Accuracy: MAPE ≤ 8% at portfolio level (flag > 10%).
+- Calibration: 80% of actuals within predicted P80–P20 band.
+
+### Incidents
+- P1 (critical/breach/production down): triage 15 min, mitigations ≤ 4h, comms every 30 min.
+- P2 (degraded/partial): triage 1h, mitigations ≤ 1 business day.
+- Pipelines & Data Quality
+- Ingestion success: ≥ 99% per run.
+- High-severity DQ fix (DQ1): ≤ 2 business days; Medium (DQ2): ≤ 5 business days.
+- Backlog cycle time (issue → done): median ≤ 5 business days.
+
+### Quality & Governance
+- Code review SLA: PR reviewed ≤ 1 business day.
+- Accessibility: all end-user outputs meet WCAG AA basics (alt text, keyboard nav, readable colours).
+
+## WIP limits (finish before starting)
+- Per person: max 2 active items (Status ∈ {In progress, Review, Testing}). Leads may hold 3 if one is “Review”.
+- Column caps: In progress ≤ 2 × team size − 1; Review ≤ 50% of In progress cap. When a column hits its cap, the team swarms to unblock/review instead of starting new work.
+
+### GitHub Projects setup (15 minutes)
+#### Fields
+- Status (Todo/In progress/Blocked/Review/Testing/Done)
+- Priority (Critical/High/Med/Low)
+- Severity (P1/P2/P3), Due (date), Owner (Assignee)
+- Service (Dashboard/Forecast/Pipeline/Incident)
+- KPI (text), Risk (text), Blocked? (checkbox)
+
+#### Saved views
+- “Due today/overdue” → Status !Done AND Due <= today (group by Owner).
+- “P1 now” → Severity = P1 AND Status !Done.
+- “Review focus” → Status = Review (group by Owner; shows WIP pressure).
+- “SLA watch” → filter Service = Dashboard/Forecast and show KPI column.
+
+#### Insights (lightweight)
+- Burn-up: scope vs. done (watch for scope creep).
+- Throughput: items/week (track WIP → cycle time).
+- Soft enforcement with Actions (copy-paste)
+
+- Create .github/workflows/sla-watch.yml in each repo (PAT/App token with project write in secrets.PROJECT_TOKEN).
+
+
+## Daily/weekly rhythm
+- **Daily stand-up from the Board**: pull rightwards; clear Review before starting new items.
+- **Mid-week SLA sweep (10 min)**: open “Due today/overdue” view; renegotiate or swarm.
+- **Friday quality huddle (15 min)**: check KPIs (accuracy, freshness, cycle time), note one improvement.
+
 
 &nbsp; 
 
@@ -1113,18 +1169,18 @@ python -m g7_assessment.cli backlog-drivers --csv data/raw/synthetic_investigati
 - Technique: SARIMAX with weekly seasonality (7) and exog drivers (investigators_on_duty, n_allocations).
 - Why: captures autocorrelation/seasonality + allows scenarios on exogenous paths.
 - Run
-python -m g7_assessment.cli tsa-forecast --csv data/raw/synthetic_investigations.csv --days 90
+python -m cli tsa-forecast --csv data/raw/synthetic_investigations.csv --days 90
 
 ### C4) High-risk applications (triage)
 - Technique: elastic-net logistic with leak-safe preprocessing and target encoding for high-card variables (e.g., occupation).
 - Why: balances sparsity & stability; TE avoids exploding one-hot columns and leakage.
 - Run (legal review model as example)
-python -m g7_assessment.cli legal-review-advanced --csv data/raw/synthetic_investigations.csv
+python -m cli legal-review-advanced --csv data/raw/synthetic_investigations.csv
 
 ### C5) Diagnostics & multicollinearity
 - Technique: VIF on numerics and pairwise correlations; drop/merge highly redundant predictors (or keep both but rely on ridge/elastic-net).
 - Run
-python -m g7_assessment.cli diagnostics --csv data/raw/synthetic_investigations.csv
+python -m cli diagnostics --csv data/raw/synthetic_investigations.csv
 
 ### C6) Micro-simulation handoff (what to export)
 From the code above, you already get:

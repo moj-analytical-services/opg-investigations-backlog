@@ -1,0 +1,18 @@
+name: SLA & WIP watch
+on:
+  schedule: [{ cron: '*/30 6-18 * * 1-5' }]  # weekdays, office hours
+  workflow_dispatch:
+jobs:
+  check_project:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PROJECT_TOKEN }}
+          script: |
+            const { graphql } = require('@octokit/graphql');
+            const projectUrl = 'https://github.com/orgs/moj-analytical-services/projects/Leila-Yousefi's Prioritisation project';
+            // 1) Query project items with Status, Due, Owner, Severity
+            // 2) If Due < now && Status != Done -> comment + label 'SLA-breached'
+            // 3) Count 'In progress/Review/Testing' per assignee -> if > cap, comment 'WIP limit exceeded'
+            // (Keep logic simple: post a single summary comment on the linked issue/PR)
