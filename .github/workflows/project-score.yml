@@ -1,0 +1,138 @@
+name: Project Score & P1 Watch # rubric prioritisation / Statutory / customer Risk
+on:
+  schedule:
+    - cron: '7 7 * * 1-5'     # 07:07 UK weekdays
+  workflow_dispatch:
+
+jobs:
+  project-score:
+    runs-on: ubuntu-latest
+    env:
+      ORG: ORG_NAME
+      PROJECT_NUMBER: 1               # <-- project number
+      W_RISK: '0.45'
+      W_VALUE: '0.35'
+      W_URGENCY: '0.20'
+    steps:
+      - name: Recalculate Score and flag P1
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PROJECT_TOKEN }}
+          script: |
+            const ORG = process.env.ORG;
+            const PROJECT_NUMBER = parseInt(process.env.PROJECT_NUMBER,10);
+            const W_RISK = Number(process.env.W_RISK);
+            const W_VALUE = Number(process.env.W_VALUE);
+            const W_URGENCY = Number(process.env.W_URGENCY);
+
+            // 1) Fetch project, fields and first 200 items (expand if needed)
+            const proj = await github.graphql(`
+              query($org:String!, $num:Int!) {
+                organization(login: $org) {
+                  projectV2(number: $num) {
+                    id
+                    fields(first: 50) {
+                      nodes {
+                        ... on ProjectV2FieldCommon { id name dataType }
+                        ... on ProjectV2SingleSelectField { id name options { id name } }
+                      }
+                    }
+                    items(first: 200) {
+                      nodes {
+                        id
+                        content {
+                          __typename
+                          ... on Issue {
+                            id number
+                            repository { nameWithOwner }
+                          }
+                          ... on PullRequest {
+                            id number
+                            repository { nameWithOwner }
+                          }
+                        }
+                        fieldValues(first: 50) {
+                          nodes {
+                            __typename
+                            ... on ProjectV2ItemFieldNumberValue { field { ... on ProjectV2FieldCommon { id name } } number }
+                            ... on ProjectV2ItemFieldSingleSelectValue { field { ... on ProjectV2FieldCommon { id name } } name optionId }
+                            ... on ProjectV2ItemFieldTextValue { field { ... on ProjectV2FieldCommon { id name } } text }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `, { org: ORG, num: PROJECT_NUMBER });
+
+            const project = proj.organization.projectV2;
+            const fieldMap = Object.fromEntries(project.fields.nodes.map(f => [f.name, f]));
+
+            // Helper to read a numeric or select value by field name
+            function getFieldVal(item, fname) {
+              const n = item.fieldValues.nodes.find(v => v.field?.name === fname);
+              if (!n) return null;
+              if (n.__typename === 'ProjectV2ItemFieldNumberValue') return Number(n.number);
+              if (n.__typename === 'ProjectV2ItemFieldSingleSelectValue') return n.name;
+              if (n.__typename === 'ProjectV2ItemFieldTextValue') return n.text;
+              return null;
+            }
+
+            // 2) Iterate items, compute Score, push back; collect P1 exceptions
+            const updates = [];
+            const p1Flags = [];
+            for (const it of project.items.nodes) {
+              const risk = getFieldVal(it,'Risk');
+              const value = getFieldVal(it,'Value');
+              const urg  = getFieldVal(it,'Urgency');
+              const eff  = getFieldVal(it,'Effort');
+              const sev  = getFieldVal(it,'Severity');
+              const status = getFieldVal(it,'Status');
+
+              // Compute score only if all inputs exist and Effort > 0
+              if ([risk,value,urg,eff].every(v => typeof v === 'number') && eff > 0) {
+                const score = (risk*W_RISK + value*W_VALUE + urg*W_URGENCY) / eff;
+                updates.push({
+                  itemId: it.id,
+                  fieldId: fieldMap['Score'].id,
+                  value: { number: Number(score.toFixed(2)) }
+                });
+              }
+
+              // Flag P1 not being worked (Todo/Blocked)
+              if (sev === 'P1' && (status === 'Todo' || status === 'Blocked') && it.content?.__typename === 'Issue') {
+                p1Flags.push({
+                  repo: it.content.repository.nameWithOwner,
+                  number: it.content.number
+                });
+              }
+            }
+
+            // 3) Apply Score updates
+            for (const u of updates) {
+              await github.graphql(`
+                mutation($project:ID!, $item:ID!, $field:ID!, $val:ProjectV2FieldValue!) {
+                  updateProjectV2ItemFieldValue(input:{
+                    projectId:$project, itemId:$item, fieldId:$field, value:$val
+                  }) { projectV2Item { id } }
+                }
+              `, { project: project.id, item: u.itemId, field: u.fieldId, val: u.value });
+            }
+
+            // 4) Comment on P1 exceptions
+            for (const f of p1Flags) {
+              await github.rest.issues.createComment({
+                owner: f.repo.split('/')[0],
+                repo: f.repo.split('/')[1],
+                issue_number: f.number,
+                body: [
+                  '⚠️ **P1 item not active in Project**',
+                  '',
+                  '- Severity is **P1** but Status is `Todo` or `Blocked`.',
+                  '- Please pull this to `In progress` or `Review`, or downgrade with justification.',
+                ].join('\n')
+              });
+            }
+
+            core.info(`Updated ${updates.length} Score values; flagged ${p1Flags.length} P1 items.`);

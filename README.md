@@ -29,6 +29,8 @@ Operational analytics, forecasting, and **transparent micro‑simulation + AI‑
 &nbsp;
 # [Project management & CI](#pm-ci)
 &nbsp;
+# [Data Prepration](#data-prep)
+&nbsp;
 # [Methods and Model](#summ) - summary of the quantitative methods used for modelling.  
 &nbsp;   
 # [Inputs](#inputs)
@@ -606,12 +608,474 @@ After pushing to GitHub:
 - **Friday quality huddle (15 min)**: check KPIs (accuracy, freshness, cycle time), note one improvement.
 
 
-&nbsp; 
+## Rubric Prioritisation
+- **Rank = (Risk × w₁ + Operational Value × w₂ + Urgency/Time-Criticality × w₃) ÷ Effort**, with a hard rule that any statutory/customer-safety P1 jumps to the top regardless of score.
+
+- Revisit many of the conceptual issues raised earlier, framing them within the rubric of research design and analysis.
+
+- **Risk** (0–5): **statutory risks**, e.g., breach, safeguarding impact, FOI/ministerial risk, data protection/security, reputational harm. “If this slips 2 weeks, what statutory/customer risk materialises? Any safeguarding, DPIA, or audit exposure?” 0 = none, 5 = immediate statutory/safety exposure.
+
+- **Operational Value** (0–5): how much the item improves decisions, accuracy, cycle time, or cost savings for OPG/MoJ. “Who uses this? What decision changes? What measurable improvement (accuracy %, hours saved, £ saved)?”
+0 = nice-to-have, 5 = high-impact decision/change for many users.
+
+- **Urgency/Time-Criticality** (0–5): deadlines (e.g., “5th working day” forecast), dependencies, incident clocks. “Is there a fixed deadline (5th WD), a dependency blocking others, or a live incident?” 0 = anytime, 5 = deadline in ≤1 week or incident.
+
+- **Effort (1–13)**: ideal developer days or story points, including uncertainty buffer. “What’s the smallest shippable slice? What unknowns remain?” Use 1–2–3–5–8–13 to reflect uncertainty.
+
+- **Weights (typical)**: w₁=0.45 (Risk), w₂=0.35 (Value), w₃=0.20 (Urgency).
+(We can flex weights per quarter, but Risk always outweighs the others.)
+
+## Concrete examples from portfolio (how cards got ordered)
+
+### Trade-offs made transparent (how I used it to manage)
+With leaders, I showed the score + WIP so the “time–quality–cost” triangle was explicit.
+- Example: “Cohort filter” scored lower than the ingestion fix. We agreed to de-scope UX niceties to protect dashboard freshness SLA and the forecast deadline.
+- If two items tied, we broke ties by dependency impact (what unblocks more work) and due dates.
+- Any P1 statutory/safeguarding item bypassed scoring and jumped to the top; we logged the exception and why.
+
+### Simple and Auditable GitHub/Kanban ()
+
+- GitHub Project fields (custom): Risk (0-5), Value (0-5), Urgency (0-5), Effort (1-13), Score (number), Due, Service (Dashboard/Forecast/Pipeline/Incident), Severity (P1–P3).
+
+- Saved views:
+
+“Ranked backlog” → sort by Score desc; filter Status=Todo.
+
+“P1 now” → Severity=P1 AND Status!=Done (always above the line).
+
+“Due this week” → Due ≤ Friday AND Status!=Done.
+
+- Light automation (optional)
+a tiny GitHub Action (github-script) recalculates Score nightly from the four fields and comments if a P1 isn’t at the top of the queue. (Manual entry also works if you’d rather keep it lightweight.)
+
+### High-level (for Steering) vs technical (for the team)
+- One slide with the top 10 items ordered by score, each showing a traffic light RAG-rating) for Risk and a clock for Urgency.
+- A second slide with the trade-off: “Protect AM refresh & 5th WD publications → defer UX options A/B by two sprints; cost impact: £0; quality held; scope flexed.”
+
+### Technical (team/PRs):
+- Each Issue holds the 4 numbers + acceptance criteria; each PR links back and shows before/after evidence (tests passing, plots, or dashboards).
+- **CI enforces quality (lint, smoke tests, schema checks); peer-review via CODEOWNERS ensures the right eyes see ETL, modelling, privacy.**
+
+### The customer values timeline, quality and cost, and often there is a trade-off between this, so there might be a difficult conversation to say you can’t have all three – this could be a problem you overcame, e.g. did you get the project back on track? If so, how did you recover it?
+#### Getting the service back on track: 
+**When Agile commissioning slipped (lost HEO time), I re-ranked with the rubric, cut scope to a thin-slice MVP, and pulled in help for the top two items (ingestion fix + monthly forecast). We hit the AM refresh SLA and 5th WD publication; lower-value UX changes moved right.**
+
+#### Difficult conversation (timeline–quality–cost traiangle): 
+**I explained that to keep quality (tests/QA) and timeline (SLA), we’d flex scope. The rubric, visible in the board, made the decision objective and acceptable to stakeholders.**
+
+
+## OPG Prioritisation Rubric + GitHub Projects Field Set + Score Action
+
+---
+
+### 1) One-page Prioritisation Rubric (scales • weights • examples)
+
+**Purpose (what this drives):** ordering in Kanban, honest trade-offs with SROs, and a transparent audit trail.
+
+**Formula (with a hard P1 override):**
+**`Rank Score = (Risk·0.45 + Value·0.35 + Urgency·0.20) ÷ Effort`**
+If **Severity = P1** (statutory/safeguarding/production outage), it jumps to the top regardless of score.
+
+**Scales (score quickly; be consistent):**
+
+* **Risk (0–5):** 0 none • 3 notable ops/compliance risk • 5 statutory/safeguarding/ministerial risk.
+* **Operational Value (0–5):** 0 nice-to-have • 3 improves a team’s decision/accuracy • 5 changes decisions for many users or saves major cost/time.
+* **Urgency (0–5):** 0 anytime • 3 deadline < 2 weeks or dependency • 5 **live incident** or hard deadline (e.g., 5th working day).
+* **Effort (1–13):** 1–2 = < ½ day • 3 = 1–2 days • 5 = ~1 week • 8–13 = multi-week/unknowns (Fibonacci).
+* **Tie-breakers:** dependency impact → due date → least effort.
+
+**Examples from the OPG portfolio:**
+
+* **Fix LPA ingestion failure (dashboards stale):** Risk 5, Value 5, Urgency 5, Effort 2 → **Top of board** (protects AM refresh SLA).
+* **Publish monthly LPA forecast (5th WD):** R 4, V 5, U 5, E 5 → **High** (deadline + wide impact).
+* **Backlog model Poisson → NegBin upgrade:** R 3, V 4, U 2, E 5 → **Mid-pack** (quality uplift, not urgent).
+* **DPIA for procurement:** managed on the **Waterfall plan** (gated), mirrored on Kanban for visibility only.
+
+**Cadence:** score in weekly triage; show “Top 10” + exceptions at Steering; re-score on new info.
+
+---
+
+### 2) GitHub Projects – Field Set (ready to paste into your setup)
+
+> **Projects (Beta/V2)** → your Project → **⋯ → Settings → Fields → Add field**
+> Use these names exactly (the Action below depends on them).
+
+**Core fields**
+
+* **Status** (Single select): `Todo, In progress, Blocked, Review, Done`
+* **Severity** (Single select): `P1, P2, P3`
+* **Service** (Single select): `Dashboard, Forecast, Pipeline, Incident`
+* **Risk** (Number 0–5)
+* **Value** (Number 0–5)
+* **Urgency** (Number 0–5)
+* **Effort** (Number 1–13)
+* **Score** (Number; auto-calculated by Action)
+* **Due** (Date)
+* **Owner** (Assignee)
+* **Blocked?** (Checkbox)
+* **KPI** (Text)
+
+**Saved views (handy)**
+
+* **Ranked backlog:** filter `Status = Todo` → sort by **Score** (desc).
+* **P1 now:** filter `Severity = P1 AND Status != Done`.
+* **Due this week:** filter `Due ≤ Friday AND Status != Done`.
+* **Review focus:** filter `Status = Review`, group by **Owner**.
+
+---
+
+### 3) Tiny Action: auto-recalculate **Score** + flag **P1** exceptions
+
+**What it does**
+
+1. Nightly/ondemand, fetches Project items, computes **Score** from Risk/Value/Urgency/Effort, and writes it back.
+2. If an item is **P1** but not being worked (Status is `Todo` or `Blocked`), it posts a **comment** on the linked Issue/PR to flag it.
+
+**Prereqs**
+
+* An **org Project** (replace `ORG_NAME` and `PROJECT_NUMBER` below).
+* A token in **repo secrets** called `PROJECT_TOKEN` with scopes to **read/write Projects v2** (PAT or GitHub App).
+* Field names exactly as listed above.
+
+Create: **`.github/workflows/project-score.yml`**
+
+```yaml
+name: Project Score & P1 Watch
+on:
+  schedule:
+    - cron: '7 7 * * 1-5'     # 07:07 UK weekdays
+  workflow_dispatch:
+
+jobs:
+  project-score:
+    runs-on: ubuntu-latest
+    env:
+      ORG: ORG_NAME                  # <-- your org login
+      PROJECT_NUMBER: 1              # <-- your project number
+      W_RISK: '0.45'
+      W_VALUE: '0.35'
+      W_URGENCY: '0.20'
+    steps:
+      - name: Recalculate Score and flag P1
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PROJECT_TOKEN }}
+          script: |
+            const ORG = process.env.ORG;
+            const PROJECT_NUMBER = parseInt(process.env.PROJECT_NUMBER,10);
+            const W_RISK = Number(process.env.W_RISK);
+            const W_VALUE = Number(process.env.W_VALUE);
+            const W_URGENCY = Number(process.env.W_URGENCY);
+
+            // 1) Fetch project, fields and first 200 items (increase or paginate if needed)
+            const proj = await github.graphql(`
+              query($org:String!, $num:Int!) {
+                organization(login: $org) {
+                  projectV2(number: $num) {
+                    id
+                    fields(first: 50) {
+                      nodes {
+                        ... on ProjectV2FieldCommon { id name dataType }
+                        ... on ProjectV2SingleSelectField { id name options { id name } }
+                      }
+                    }
+                    items(first: 200) {
+                      nodes {
+                        id
+                        content {
+                          __typename
+                          ... on Issue {
+                            id number
+                            repository { nameWithOwner }
+                          }
+                          ... on PullRequest {
+                            id number
+                            repository { nameWithOwner }
+                          }
+                        }
+                        fieldValues(first: 50) {
+                          nodes {
+                            __typename
+                            ... on ProjectV2ItemFieldNumberValue {
+                              field { ... on ProjectV2FieldCommon { id name } }
+                              number
+                            }
+                            ... on ProjectV2ItemFieldSingleSelectValue {
+                              field { ... on ProjectV2FieldCommon { id name } }
+                              name optionId
+                            }
+                            ... on ProjectV2ItemFieldTextValue {
+                              field { ... on ProjectV2FieldCommon { id name } }
+                              text
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `, { org: ORG, num: PROJECT_NUMBER });
+
+            const project = proj.organization.projectV2;
+            const fieldMap = Object.fromEntries(project.fields.nodes.map(f => [f.name, f]));
+
+            function getFieldVal(item, fname) {
+              const n = item.fieldValues.nodes.find(v => v.field?.name === fname);
+              if (!n) return null;
+              if (n.__typename === 'ProjectV2ItemFieldNumberValue') return Number(n.number);
+              if (n.__typename === 'ProjectV2ItemFieldSingleSelectValue') return n.name;
+              if (n.__typename === 'ProjectV2ItemFieldTextValue') return n.text;
+              return null;
+            }
+
+            const updates = [];
+            const p1Flags = [];
+
+            for (const it of project.items.nodes) {
+              const risk = getFieldVal(it,'Risk');
+              const value = getFieldVal(it,'Value');
+              const urg  = getFieldVal(it,'Urgency');
+              const eff  = getFieldVal(it,'Effort');
+              const sev  = getFieldVal(it,'Severity');
+              const status = getFieldVal(it,'Status');
+
+              if ([risk,value,urg,eff].every(v => typeof v === 'number') && eff > 0) {
+                const score = (risk*W_RISK + value*W_VALUE + urg*W_URGENCY) / eff;
+                updates.push({
+                  itemId: it.id,
+                  fieldId: fieldMap['Score'].id,
+                  value: { number: Number(score.toFixed(2)) }
+                });
+              }
+
+              const isP1 = sev === 'P1';
+              const dormant = status === 'Todo' || status === 'Blocked';
+              if (isP1 && dormant && it.content?.number) {
+                p1Flags.push({
+                  repo: it.content.repository.nameWithOwner,
+                  number: it.content.number
+                });
+              }
+            }
+
+            // 3) Apply Score updates
+            for (const u of updates) {
+              await github.graphql(`
+                mutation($project:ID!, $item:ID!, $field:ID!, $val:ProjectV2FieldValue!) {
+                  updateProjectV2ItemFieldValue(input:{
+                    projectId:$project, itemId:$item, fieldId:$field, value:$val
+                  }) { projectV2Item { id } }
+                }
+              `, { project: project.id, item: u.itemId, field: u.fieldId, val: u.value });
+            }
+
+            // 4) Comment on P1 exceptions (works for both Issues and PRs)
+            for (const f of p1Flags) {
+              const [owner, repo] = f.repo.split('/');
+              await github.rest.issues.createComment({
+                owner, repo,
+                issue_number: f.number,
+                body: [
+                  '⚠️ **P1 item not active in Project**',
+                  '',
+                  '- Severity is **P1** but Status is `Todo` or `Blocked`.',
+                  '- Please pull this to `In progress` or `Review`, or downgrade with justification.',
+                ].join('\n')
+              });
+            }
+
+            console.log(`Updated ${updates.length} Score values; flagged ${p1Flags.length} P1 items.`);
+```
+
+**Notes & tweaks**
+
+* Increase `items(first: 200)` or add pagination if your Project is larger.
+* For a **user** Project (not org), change the GraphQL root from `organization(login:)` to `user(login:)`.
+* Prefer a GitHub **App** for org-wide Projects access if PATs are restricted.
+* To also **nudge WIP limits**, add a pass that counts `Status ∈ {In progress, Review}` per assignee and comments when a cap is exceeded.
+
+
+## CI vs CD in GitHub
+
+|              | **Continuous Integration (CI)**                   | **Continuous Delivery (CD)**                                            |
+| ------------ | ------------------------------------------------- | ----------------------------------------------------------------------- |
+| **Purpose**  | Keep code always working by testing every change  | Ship ready-to-release artefacts after CI passes                         |
+| **Trigger**  | Every push / pull request                         | Merge to `main` or a release tag                                        |
+| **Gates**    | Automated checks: build, lint, tests, data checks | Packaging, versioning, docs, staging deploy; prod kept behind approval  |
+| **Speed**    | Fast feedback (minutes)                           | Can run longer (builds, docs, packaging)                                |
+| **Output**   | Green check on the PR; safe to merge              | Built artefacts, published docs, release notes, optional staging deploy |
+| **Who acts** | Developers and reviewers                          | Release owner/maintainer approves promotion to prod                     |
+
+---
+
+### 1) Investigation dashboards (daily refresh)
+
+**CI**
+
+* On each PR: install, lint/format, smoke run on synthetic data, schema checks for required fields, unit tests for chart logic, before/after screenshot attached to PR.
+* PR blocked until checks pass and CODEOWNER approves.
+
+**CD**
+
+* After merge to `main`: build docs (MkDocs), publish release notes, package dashboard code.
+* Staging refresh auto, production refresh requires approval to protect live users.
+
+### 2) Monthly LPA/deputyship/supervision forecasts
+
+**CI**
+
+* On PR: run model unit tests, fast backtests on a small slice, assert KPIs (e.g., MAPE thresholds) and calibration, validate data contracts.
+* No merge if tests fail or KPI guardrails are breached.
+
+**CD**
+
+* On tag (e.g., `v2025.02`): build and publish internal package/wheel, push docs with updated assumptions and model cards, attach artefacts to the release.
+* Production run scheduled, kicked off only after sign-off.
+
+### 3) Data ingestion fix (pipelines)
+
+**CI**
+
+* On PR: ETL unit tests, contract checks (columns, types, ranges), smoke ingestion to a test bucket, alert on anomalies.
+* Merge blocked on red checks.
+
+**CD**
+
+* After merge: build container/image, push to registry, deploy to staging.
+* Production promotion is manual and auditable (change record + approval).
+
+---
+
+
+* “**CI** is every change tested automatically so `main` stays healthy.
+* **CD** packages and publishes after CI so a release is always ready; we keep production behind an approval because of governance.”
+* “For OPG, CI ran lint, unit tests, smoke and schema checks on every PR. CD built docs and artefacts on `main` or a tag and deployed to staging; production needed a sign-off.”
 
 &nbsp; 
 
+&nbsp; 
+<a name="data-prep"></a>
+# Data Prepration
+
+
+## 1) Ingest & standardise
+- **Pulled LPA/Deputyship/Supervision into an AWS/Athena/SQL layer; enforced schema, datatypes, and PII tagging; created CDC-friendly partitions for incremental loads.**
+    - CDC (Change Data Capture): Any technique to capture only what changed in a source (inserts, updates, deletes) so your downstream tables update incrementally instead of full-refreshing.
+    - PII (Personally Identifiable Information): Data that can identify a person (e.g., name, DOB, address, NI number). Treat it with stricter controls (masking, encryption, access rules).
+- **“I separate raw/bronze from curated/silver, add schema contracts, and log row-level source provenance.”**
+- “I run contract-first schemas—explicit types, not inferred—and block bad records with quarantine. QE checks run in CI and in Airflow before we publish.”
+- “Columns are tagged for PII; default datasets are masked/tokenised with KMS-backed keys, and Lake Formation applies tag-based access so only approved roles can see raw PII.”
+- “For CDC, I track a high-watermark on updated_at, partition by date and sometimes source, and do MERGE upserts into Iceberg so inserts, updates, and deletes are handled correctly.”
+- “Everything is idempotent, observable (metrics, logs), and auditable.”
+
+### enforced schema & datatypes
+Contract-first, not “infer”:
+- I define a data contract (**YAML/JSON** or **Glue Data Catalog table**) with column names, types, nullability, and constraints.
+- All jobs read with an explicit schema and fail fast on mismatches; bad rows go to a quarantine bucket with an error reason.
+- Typical stack:
+    - **AWS Glue/Athena**: table schema is the contract; Glue column parameters store metadata (e.g., pii=true).
+    - **Spark/Databricks**: read with StructType, not inferSchema; set mode="FAILFAST" or route failures to quarantine.
+    - **Quality gates**: Great Expectations/Deequ checks (types, ranges, enums, referential integrity) run in Airflow before publishing.
+```python
+from pyspark.sql.types import *
+schema = StructType([
+  StructField("case_id", StringType(), False),
+  StructField("date_received", DateType(), False),
+  StructField("donor_name", StringType(), True),   # PII
+  StructField("amount", DecimalType(18,2), True)
+])
+df = (spark.read
+      .schema(schema)
+      .option("mode","FAILFAST")
+      .json("s3://opg/raw/incoming/*.json"))
+# Example type/enum checks (pseudo)
+assert df.filter("amount < 0").count() == 0, "Negative amount found"
+```
+
+### tagged & protected PII
+- Identify & label:
+    - Maintain a column-level PII register (simple CSV/YAML) and/or use AWS Macie / pattern-based rules to detect NI numbers, emails, etc.
+    - In Glue, store LF-Tags or column parameters like {"pii":"true","classification":"confidential"}.
+- Protect:
+    - Masking/Pseudonymisation: e.g., salted hash/HMAC for names; tokenise identifiers for joins; keep salts/keys in AWS KMS.
+    - Access control: Use Lake Formation tag-based access control so analysts see masked columns by default; only a restricted role can see raw PII.
+    - Auditability: Log redaction/masking actions with record counts and sample hashes so you can prove compliance.
+
+- Conceptual:
+```sql
+-- Glue column params (illustrative)
+ALTER TABLE opg_curated.investigations
+ALTER COLUMN donor_name SET TBLPROPERTIES ('pii'='true','classification'='confidential');
+-- Downstream view for general users (masked)
+CREATE OR REPLACE VIEW opg_curated.v_investigations AS
+SELECT case_id,
+       date_received,
+       sha2(concat(donor_name, '${SALT}'), 256) AS donor_name_hash,
+       amount
+FROM opg_curated.investigations;
+```
+
+### CDC-friendly partitions & incremental loads
+- **Partitioned by reciept date** (e.g., dt=YYYY-MM-DD) and sometimes source system (source=opg)—stable, **low-cardinality partition keys keep queries fast**.
+- Maintained a high-watermark (latest updated_at processed) per source, stored in a small state table/S3 marker, so next runs only pull newer changes.
+- Represented deletes/updates correctly using MERGE semantics into Iceberg/Delta tables.
+
+- CDC options:
+    - Timestamp-based CDC (most common): select rows where updated_at > last_watermark.
+    - Log-based CDC (if available): read source change logs (insert/update/delete events).
+    - Snapshot + diff (fallback): compare today’s snapshot to yesterday’s to infer changes.
+
+- **Databricks/Iceberg** upsert sketch:
+```sql
+MERGE INTO curated.investigations t
+USING staging.investigations_changes s
+ON t.case_id = s.case_id
+WHEN MATCHED AND s.op = 'DELETE' THEN DELETE
+WHEN MATCHED THEN UPDATE SET *
+WHEN NOT MATCHED THEN INSERT *
+```
+- **Airflow DAG** shape:
+    - Sensor for new files → Ingest (schema-enforced read) → DQ checks → CDC merge into Iceberg (partitioned by dt) → Publish/notify.
+    - Jobs are idempotent: re-running with the same watermark produces the same table.
+
+## 2) Clean, dedupe, reconcile
+- Resolved person/entity duplicates with deterministic keys + fuzzy matching; documented survivorship rules.
+- “I keep business rules in code (tests), not in people’s heads.”
+
+## 3) Transform & feature engineer
+- Built **time-based features** (lags/rolling windows, holiday effects) for **LSTM/SARIMA**; encoded case types; **derived cohort/survival features for durability of orders**.
+- **“Features are versioned and reviewable; I store derivations alongside data dictionaries.”**
+
+## 4) Exploratory analysis
+- For Dashboard used profiling (nulls, ranges), **PCA to simplify signals**, and **stratified EDA to spot drift between training and live cohorts**.
+- **“EDA ends with risks/assumptions list and a checklist for data quality monitors.”**
+
+&nbsp; 
+
+&nbsp; 
 <a name="summ"></a>
 # Methods and Model 
+
+## Statistical & ML techniques & Evaluation
+- **Time series**: SARIMA/LSTM with backtesting, rolling-origin CV, MAE/MAPE; Monte-Carlo for forecast intervals so planners see uncertainty.
+
+- **Survival/cohort**: Kaplan–Meier/Cox-style durability to predict supervision lifetimes; evaluated via concordance and calibration.
+    - What would use Cohort Analysis? How would you work out the future value based on actual data? Cohort Survival Rate: For each subsequent year from 2025 onwards, we apply a survival/retention rate to the cohort from the previous year. This models the likelihood that donors will continue donating as they age.
+    - Behaviour Tracking: Each cohort (age group) is tracked separately. We estimate the number of demands each year by applying the survival rate to the previous year's forecasted demands for that age group.
+    - Cohort-Based Forecast: By focusing on the specific behaviour of different age cohorts, this approach avoids the pitfalls of simple extrapolation and produces a more nuanced forecast.
+    - Stochastic Model: The Monte Carlo is still used to incorporate uncertainty into the forecasts, but now it's applied within the context of the cohort model. 
+
+
+- **Classification/NLP** : Logistic regression/linear SVM for sentiment and document labels; TF-IDF/embeddings; explainability via coefficients/SHAP-style feature importances so non-tech stakeholders can trust outputs.
+
+- **Decisioning**:
+    - Threshold analysis against operational cost curves;
+    - sensitivity/specificity tuned to risk tolerance (“false negative” cost high in safeguarding).
+    - Scenario Analysis using assumptions when the stakeholder expect higher or lower demands to adjust it. Scenario analysis is a process of analysing possible future events by considering alternative possible outcomes (scenarios). This was designed to allow improved decision-making by allowing more complete consideration of outcomes and their implications. Designed different scenarios for the evaluation of the techniques and evaluated the model outcomes discussed the pros and cons of different perspectives, as well as exploring trade-offs and uncertainties related to those 
+
+- **“I compare simple, auditable baselines to complex models, use proper backtests, and publish an evaluation card with metrics, assumptions, risks/caveats, and ‘known-unknowns’.”**
+
 
 ## What’s included
 - **Linked data & metrics** pipeline (design) for backlog measurement (size, age, throughput).
