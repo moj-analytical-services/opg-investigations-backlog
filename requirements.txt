@@ -4,14 +4,14 @@ scikit-learn>=1.5
 statsmodels>=0.14
 matplotlib>=3.8
 seaborn>=0.13
-lifelines>=0.27
+lifelines>=0.27 ; python_version >= "3.9"
 scipy>=1.11
 click>=8.1
 joblib>=1.4
 pyyaml>=6.0
 pytest>=8.0
 hypothesis>=6.100
-black>=24.0
+black>=24.8
 ruff>=0.6.9
 pre-commit>=3.8
 jupytext>=1.16

@@ -65,6 +65,9 @@ Operational analytics, forecasting, and **transparent micro‑simulation + AI‑
 
 <a name="setup"></a>
 # Repository and Git Setup
+## goal
+**Deliver a reproducible, explainable investigations pipeline that quantifies backlog drivers, forecasts workload, prioritises high-risk cases, and exports simulation-ready inputs, with strong governance (privacy, ethics), CI/CD, and collaboration.**
+
 - **Branching**: feature branches (feat/, fix/, refactor/), protected main.
 
 - **CI gates**: ruff + black + pytest run on every push/PR via GitHub Actions.
@@ -76,27 +79,42 @@ Operational analytics, forecasting, and **transparent micro‑simulation + AI‑
 - **Quality & testing**: schema checks, unit & property tests, reproducibility (seeds), pre-commit hooks, doc pages for QA and ethics.
 All of the above is pre-wired in the repo so you can demonstrate collaborative, production-ready habits.
 
+
+- **“We use a CI wrapper (Makefile/script) so devs and CI run the same steps — no ‘works on my machine’ drift.”**
+
+- **“We gate PRs with smoke tests: a tiny synthetic run proves the critical path creates the key artefacts.”**
+
+- **“Devs get fast feedback and stable reviews; heavier tests run nightly on a fresh synthetic data build.”**
+
+- **“We keep a feature catalogue linking code lineage, business definitions, and plots — auditable and policy-relevant.”**
+
+- **“We export simulation-ready inputs (arrival rates, service-time quantiles, routing) to power micro-simulation.”**
+
 - **We use a CI wrapper so devs and CI run the same steps. We gate PRs with smoke tests—tiny, end-to-end checks that a synthetic dataset runs through our pipeline and produces key artefacts. It keeps feedback fast and dependable; deeper tests run nightly.**
+
 - A **CI wrapper** (a **Makefile** target or scripts/ci.sh) makes the exact same command work locally and in **GitHub Actions**.
-* “Our **CI wrapper** ensures the *same* steps run locally and in CI—no ‘works on my machine’ drift.”
-* “We gate PRs with **smoke tests**: a tiny synthetic run proves the critical path creates the key artefacts.”
-* “Devs get **fast feedback** and stable reviews; heavier tests run **nightly** on a fresh synthetic dataset.”
+
+- “Our **CI wrapper** ensures the *same* steps run locally and in CI—no ‘works on my machine’ drift.”
+
+- “We gate PRs with **smoke tests**: a tiny synthetic run proves the critical path creates the key artefacts.”
+
+- “Devs get **fast feedback** and stable reviews; heavier tests run **nightly** on a fresh synthetic dataset.”
 
 
-## Repository structure / layout
+## 1) Repository structure/layout (RAP-friendly) 
 ```
 opg-investigations-backlog/
 ├── configs/                 # YAML inputs & scenarios
 ├── data/                    # raw & processed data (git-ignored) (placeholders only)
-│   ├── raw/                 # original, untouched data
+│   ├── raw/                 # original, untouched data, never commit PII
 │   └── processed/           # cleaned or transformed data outputs
 │   └── out/                 # processed data outputs
 ├── notebooks/               # exploratory and analysis notebooks
 │   └── data-analysis.ipynb  # data analysis notebook
 │   └── Leila-yousefi.ipynb
 │   └── corr_cause.ipynb
-├── docs/                    # User guide, QA, ethics, PM, interview Q&A
-├── src/                     # Python modules and scripts
+├── docs/                    # User guide, QA, ethics, PM, interview Q&A, MkDocs site (schema, SIMUL8 wiring, model cards)
+├── src/                     # Python modules/scripts, production code (pip-installable pkg)
 │   ├── __init__.py          # marks this folder as a package
 │   └── data_processing.py   # reusable data-loading and cleaning functions
 │   └── data_quality.py      # Data Quality Checks class
@@ -109,7 +127,9 @@ opg-investigations-backlog/
 │   └── encoders.py          # K-Fold target encoder
 │   └── features.py          # preprocessor with TE support
 │   └── modeling.py          # adds advanced logistic pipeline + helpers
+│   └── synth.py             # synthetic data generator (no PII)
 │   └── cli.py               # add two new commands: diagnostics, logit-advanced
+│   └── cli_nbwrap.py        # CLI wrapper orchestrating notebook logic (no logic changes)
 │   └── diagnostics.py       # VIF, correlations, over-dispersion
 ├── tests/                   # Automated unit testing, Pytest unit tests (data & modeling)
 │   └── test_data_quality.py # pytest tests for Data Quality
@@ -120,10 +140,304 @@ opg-investigations-backlog/
 │       └─ ci-cd.yml         # multi-stage pipeline(build→test→ deploy-qa), needs: enforce ordering, ties QA deploy to protected qa environment requires  approval.
 ├── .pre-commit-config.yaml  # black, ruff, nbstripout, etc.
 ├── .gitignore               # Configure to exclude from Git /data/, environment folders, caches, and any large files.
-├── README.md                # project overview and setup instructions
+├── reports/                 # derived CSV/figures for stakeholders
+├── scripts/ci.sh            # CI wrapper (local == CI)
+├── README.md                # quickstart + governance pointers, project overview and setup instructions
+├── docs/                    # MkDocs site (schema, SIMUL8 wiring, model cards)
+├── Makefile                 # make setup | run-all | docs | synth
 └── requirements.txt         # pinned Python dependencies / freezed library versions to ensure consistent environments across machines.
 └── ...
 ```
+
+## 2) Version control & collaboration
+- Protected main: no direct pushes; all changes via PR.
+- Branch naming: feat/…, fix/…, exp/… (for experiments), docs/…, chore/….
+- Conventional commits for clean changelogs (feat:, fix:, docs:).
+- PR template requires: problem, approach, evidence (metrics/plots), risks, rollout.
+- CODEOWNERS maps folders to reviewers (data eng / modelling / policy).
+- Project board: Backlog → In progress → Review → Done (weekly demo cadence).
+- Issue tracking: GitHub Issues as the **SoT = “Source of Truth”**; optionally mirror to JIRA if needed. The single, authoritative place where the team records work, decisions, status and acceptance criteria. Everyone looks there first; if something isn’t in Issues, it’s not part of the plan.
+    - Alignment: one canonical backlog → fewer conflicting lists (JIRA, spreadsheets, Slack).
+    - Traceability: Issues ↔ PRs ↔ commits ↔ releases → clear audit trail.
+    - Accountability: owners, due dates, acceptance criteria in one place.
+- How to make GitHub Issues your SoT (quick rules)
+    - Every piece of work has an Issue (no orphan PRs).
+    - Link PRs to Issues with keywords (Closes #123) and Project/Milestone tags.
+    - Use templates so Issues have problem, scope, acceptance criteria, data ethics/privacy notes.
+    - Labels for triage (e.g., priority:P1, area:backlog, type:bug/feat/model).
+    - Project board (Backlog → In Progress → Review → Done) reflects Issue status—not a separate spreadsheet.
+    - Decisions (ADRs, key choices) are linked from the Issue.
+    - If another tool (e.g., JIRA) must exist, one is SoT; the other mirrors it (sync or summary), never both as masters.
+- PR description
+```bash
+Closes #123
+- Implements backlog GLM with NegBin fallback
+- Adds smoke test for daily backlog generation
+```
+- Issue template (excerpt)
+```
+## Problem
+## Approach
+## Acceptance Criteria
+- [ ] Metric X computed for case_type
+- [ ] Data ethics check recorded
+## Links
+- Design / ADR:
+- Related PRs:
+```
+
+## 3) Documentation: what, where, how
+- README.md: quickstart, data ethics, how to run pipeline, links to docs.
+- MkDocs + Pages for:
+    - Microsim schema (docs/microsim_schema.json)
+    - SIMUL8 wiring guide (docs/how_to_wire_simul8.md)
+    - Working Agreement (ways of working, quality gates)
+    - Model cards (purpose, data, metrics, fairness, caveats)
+    - Feature catalogue (definitions, lineage, plots)
+
+- Notebooks: narrative analysis only; converted to code via wrappers. Use nbstripout + jupytext for diffs.
+```yaml
+# mkdocs.yml (snippet)
+nav:
+  - Home: docs/index.md
+  - Microsim Schema: docs/microsim_schema.json
+  - How to wire SIMUL8: docs/how_to_wire_simul8.md
+  - Working Agreement: docs/working_agreement.md
+```
+
+## 4) Reproducibility & environments
+- Pin Python & packages in requirements.txt (or environment.yml).
+- Determinism: set seeds in modeling; synthetic generator provides stable tests.
+- Data contracts: validate inputs with a schema (e.g., Pandera).
+```python
+# pandera input schema (example)
+import pandera as pa
+from pandera import Column, Check
+EngineeredSchema = pa.DataFrameSchema({
+    "id": Column(int),
+    "case_type": Column(str),
+    "risk": Column(str, checks=Check.isin(["Low","Medium","High"])),
+    "date_received_opg": Column(pa.DateTime),
+    "date_allocated_investigator": Column(pa.DateTime, nullable=True),
+    "days_to_alloc": Column(float, nullable=True, checks=Check.ge(0)),
+})
+```
+## 5) Data ethics, privacy, and sharing
+- No PII in repo; use synthetic or anonymised data for examples and CI.
+- Access controls: real data only via approved secure stores; bucket ACLs not repo-tracked.
+- DPIA alignment; Model cards include fairness, limitations, and intended use.
+- Metadata on every artifact (data snapshot hash, code version, timestamp).
+
+## 6) Code quality (pre-commit)
+```python
+# .pre-commit-config.yaml (essentials)
+repos:
+  - repo: https://github.com/psf/black
+    rev: 24.8.0
+    hooks: [ { id: black } ]
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.7.1
+    hooks: [ { id: nbstripout } ]
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - { id: check-ast }
+      - { id: check-yaml }
+      - { id: end-of-file-fixer }
+      - { id: trailing-whitespace }
+```
+
+## 7) CI wrapper & smoke tests (fast PR gates)
+- “Our CI wrapper ensures the same steps run locally and in CI — no ‘works on my machine’ drift.”
+```bash
+# scripts/ci.sh
+#!/usr/bin/env bash
+set -euo pipefail
+python -m pip install -U pip
+pip install -r requirements.txt
+ruff check .
+black --check .
+pytest -q -m "smoke" --maxfail=1
+```
+
+```yaml
+# .github/workflows/ci.yml
+name: CI
+on: [push, pull_request]
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - run: scripts/ci.sh
+```
+
+```ini
+# pytest.ini
+[pytest]
+markers =
+    smoke: very fast checks for CI gating
+```
+
+```python
+# tests/test_pipeline_smoke.py
+import pytest
+from pathlib import Path
+@pytest.mark.smoke
+def test_tiny_synth_pipeline(tmp_path: Path):
+    from synth import generate_synthetic
+    from preprocessing import load_raw, engineer
+    from intervals import build_event_log, build_backlog_series
+    df = generate_synthetic(n_rows=400, seed=42)
+    raw_csv = tmp_path / "raw.csv"
+    df.to_csv(raw_csv, index=False)
+    raw, colmap = load_raw(raw_csv)
+    eng = engineer(raw, colmap)
+    events = build_event_log(eng)
+    backlog = build_backlog_series(eng)
+    assert len(eng) > 0
+    assert events is not None and backlog is not None
+```
+
+- Pattern
+    - Every PR: wrapper + smokes → quick green/red.
+    - Nightly: full pipeline on fresh synthetic dataset (+ heavier tests/backtests/schema checks).
+
+## 8) Nightly runs & artifacts
+- “Heavier tests run nightly on a fresh synthetic data build.”
+```yaml
+# .github/workflows/nightly-run-all.yml
+name: Nightly Run-All (Synthetic)
+on:
+  schedule: [ { cron: "0 3 * * *" } ]
+  workflow_dispatch: {}
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+          python -m synth --rows 25000 --out data/raw/synth.csv --seed $RANDOM
+          python -m cli_nbwrap run-all --raw data/raw/synth.csv --outbase .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nightly-artifacts
+          path: |
+            reports/**
+            data/processed/**
+          if-no-files-found: warn
+```
+
+## 9) Model evaluation, explainability & feature governance
+- Results repo layout
+    - models/ (fitted pipelines, params, hash of training data)
+    - model_eval/ (notebooks/CSV: metrics, calibration curves)
+    - reports/ (stakeholder tables & figures)
+
+- Explainability
+    - SHAP for global/local; eli5 permutation importance; keep seeds constant.
+    - Feature catalogue in docs/feature_catalogue.md: definition, lineage (file+func), business meaning, plots.
+```python
+# SHAP example (binary classifier)
+import shap
+shap.explainers.Permutation # optional for model-agnostic
+explainer = shap.Explainer(model.predict_proba, X_background)
+shap_values = explainer(X_eval)
+shap.plots.bar(shap_values, max_display=15)      # global
+shap.plots.waterfall(shap_values[0])             # local
+```
+- Dimensionality reduction
+    - PCA/clustering for diagnostics & communication (document in docs; plots in reports).
+```python
+# PCA quick diagnostic
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+Xz = StandardScaler().fit_transform(X)
+pca = PCA(n_components=2).fit(Xz)
+coords = pca.transform(Xz)  # 2D for stakeholder plots
+```
+
+## 10) Backlog analytics: core DS patterns (ready to discuss)
+- GLM (Poisson→NegBin) for backlog drivers: effect of investigators_on_duty, case_type, reallocation.
+- Cox PH for time-to-allocation / PG sign-off (censoring-aware).
+- Elastic-net logistic for legal review propensity (stable, explainable).
+- SARIMAX for daily backlog forecasts with exogenous staffing.
+
+**All are scripted via cli_nbwrap.py commands that call the existing notebook logic — ensuring policy-grade reproducibility.**
+
+## 11) Continuous delivery (optional)
+- Tag releases vMAJOR.MINOR.PATCH.
+- Release notes summarise user-visible changes (plain English for policy).
+- Optionally publish docs via GitHub Pages on every merge to main.
+```yaml
+# .github/workflows/docs.yml (build MkDocs)
+name: Docs
+on: { push: { branches: [ main ] } }
+permissions: { contents: write }
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: |
+          pip install mkdocs mkdocs-material
+          mkdocs build --strict
+      - uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+```
+
+## 12) Dashboards & stakeholder loop
+- Power-BI: connect to reports/ CSVs (non-PII) with scheduled refresh; embed issue links back to GitHub for feedback.
+- JIRA/GitHub linking: PRs reference Issue IDs; dashboards link to the current release tag & model card.
+
+## 13) Security & dependency hygiene
+- Dependabot for pip updates.
+- Secret scanning enabled; never commit .env or keys.
+- pip caching in Actions; verify hashes if desired.
+```yaml
+# .github/dependabot.yml
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule: { interval: "weekly" }
+```
+
+## 14) Minimal command cheatsheet (for live demo)
+```bash
+# Setup
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+pre-commit install
+# Generate synth & run the full pipeline (no real data needed)
+python -m synth --rows 8000 --out data/raw/synth.csv
+python -m cli_nbwrap run-all --raw data/raw/synth.csv --outbase .
+# See outputs
+ls data/processed/    # engineered.csv, event_log.csv, backlog_series.csv, …
+ls reports/           # last_year_by_team.csv, annual_stats.csv, yoy_change.csv, run_all_summary.md
+```
+
+## 15) Anti-patterns to avoid (and say so)
+- Duplicated CI logic (README vs Make vs Workflow) → drift.
+- Monolithic tests that do everything → slow feedback, devs stop running them.
+- Network-dependent smokes → flaky CI (prefer synthetic).
+- Hidden local .env magic → not reproducible (encode in scripts/CI).
+
 
 ## How to use the modules (examples)
 ```python
@@ -1051,39 +1365,82 @@ WHEN NOT MATCHED THEN INSERT *
 - For Dashboard used profiling (nulls, ranges), **PCA to simplify signals**, and **stratified EDA to spot drift between training and live cohorts**.
 - **“EDA ends with risks/assumptions list and a checklist for data quality monitors.”**
 
+### eda_opg.py
+- Design choice: “I wrapped EDA in an OOP class with a typed EDAConfig. It prevents magic strings and makes every method unit-testable and reusable across notebooks and pipelines.”
+
+- Censoring: “I derive days_to_alloc and event_alloc in __init__, so all downstream analyses can use Kaplan–Meier without re-deriving.”
+
+- Defensive programming: “km_quantiles_by_group gracefully degrades to naive quantiles if lifelines isn’t installed—useful for CI.”
+
+- Causality/leakage: “I added a leakage scan so pre-allocation models don’t accidentally include post-allocation fields.”
+
+- Ops-ready outputs: “monthly_kpis() produces stakeholder tables (team × month) for backlog, delays, and legal review rate—this is what you’d surface on dashboards.”
+
 &nbsp; 
 
 &nbsp; 
 <a name="summ"></a>
 # Methods and Model 
 
-## Statistical & ML techniques & Evaluation
-- **Time series**: SARIMA/LSTM with backtesting, rolling-origin CV, MAE/MAPE; Monte-Carlo for forecast intervals so planners see uncertainty.
+## Statistical & ML techniques & Evaluation of Backlog analytics
+- **Time series**:
+    - SARIMA/LSTM with backtesting, rolling-origin CV, MAE/MAPE;
+    - Monte-Carlo for forecast intervals so planners see uncertainty.
 
 - **Survival/cohort**: Kaplan–Meier/Cox-style durability to predict supervision lifetimes; evaluated via concordance and calibration.
-    - What would use Cohort Analysis? How would you work out the future value based on actual data? Cohort Survival Rate: For each subsequent year from 2025 onwards, we apply a survival/retention rate to the cohort from the previous year. This models the likelihood that donors will continue donating as they age.
-    - Behaviour Tracking: Each cohort (age group) is tracked separately. We estimate the number of demands each year by applying the survival rate to the previous year's forecasted demands for that age group.
-    - Cohort-Based Forecast: By focusing on the specific behaviour of different age cohorts, this approach avoids the pitfalls of simple extrapolation and produces a more nuanced forecast.
-    - Stochastic Model: The Monte Carlo is still used to incorporate uncertainty into the forecasts, but now it's applied within the context of the cohort model. 
+    - What would use Cohort Analysis? How would you work out the future value based on actual data?
+    - **Cohort Survival Rate**: For each subsequent year from 2025 onwards, we apply a survival/retention rate to the cohort from the previous year. This models the likelihood that donors will continue donating as they age.
+    - **Behaviour Tracking**: Each cohort (age group) is tracked separately. We estimate the number of demands each year by applying the survival rate to the previous year's forecasted demands for that age group.
+    - **Cohort-Based Forecast**: By focusing on the specific behaviour of different age cohorts, this approach avoids the pitfalls of simple extrapolation and produces a more nuanced forecast.
+    - **Stochastic Model**: The Monte Carlo is still used to incorporate uncertainty into the forecasts, but now it's applied within the context of the cohort model. 
 
-
-- **Classification/NLP** : Logistic regression/linear SVM for sentiment and document labels; TF-IDF/embeddings; explainability via coefficients/SHAP-style feature importances so non-tech stakeholders can trust outputs.
+- **Classification/NLP**:
+    - **Logistic regression/linear SVM** for sentiment and document labels;
+    - **TF-IDF/embeddings**;
+    - **explainability via coefficients/SHAP-style feature importances** so non-tech stakeholders can trust outputs.
 
 - **Decisioning**:
-    - Threshold analysis against operational cost curves;
-    - sensitivity/specificity tuned to risk tolerance (“false negative” cost high in safeguarding).
-    - Scenario Analysis using assumptions when the stakeholder expect higher or lower demands to adjust it. Scenario analysis is a process of analysing possible future events by considering alternative possible outcomes (scenarios). This was designed to allow improved decision-making by allowing more complete consideration of outcomes and their implications. Designed different scenarios for the evaluation of the techniques and evaluated the model outcomes discussed the pros and cons of different perspectives, as well as exploring trade-offs and uncertainties related to those 
+    - **Threshold analysis against operational cost curves**;
+    - **sensitivity/specificity tuned to risk tolerance** (“false negative” cost high in safeguarding).
+    - **Scenario Analysis using assumptions**:
+        - **Feasibility of staffing changes** measuring backlog change per Δ investigators.
+        - test “what if we add/remove investigators?” and quantify expected backlog change, the feasibility angle stakeholders asked for.
+        -  when the stakeholder expect higher or lower demands to adjust it.
+        -  Scenario analysis is a process of analysing possible future events by considering alternative possible outcomes (scenarios).
+        -  This was designed to allow improved decision-making by allowing more complete consideration of outcomes and their implications.
+        -  Designed different scenarios for the evaluation of the techniques and evaluated the model outcomes discussed the pros and cons of different perspectives, as well as exploring trade-offs and uncertainties related to those.
 
-- **“I compare simple, auditable baselines to complex models, use proper backtests, and publish an evaluation card with metrics, assumptions, risks/caveats, and ‘known-unknowns’.”**
+- **GLM (Poisson→NegBin) for backlog drivers**:
+    - Backlog GLM (Poisson → auto-upgrade to NegBin on over-dispersion) to **quantify staffing effects** (effect of investigators_on_duty, case_type, reallocation).
+
+- **Cox PH for time-to-allocation / PG sign-off** (censoring-aware).
+    - Cox survival for time to PG sign-off.
+
+- **Classifier (logistic) for probability of legal review by case type/risky**:
+    - High-risk/legal review identification: classifier for needs_legal_review using case type/risk/weighting/reallocation.
+    - Elastic-net logistic for legal review propensit (stable, explainable).
+
+- **Simple daily backlog forecaster (ETS-style with GLM trend)**: These directly address the “factors affecting backlog,” “time interval,” and “which cases go to legal review” questions in the brief.
+
+- **SARIMAX for daily backlog forecasts with exogenous staffing**.
 
 
-## What’s included
+
+## GitHub workflow
+- **Branching**: feature branches (feat/, fix/, refactor/), protected main.
+- **CI gates**: ruff + black + pytest run on every push/PR via GitHub Actions.
+- **PR hygiene: PR template, CODEOWNERS, issue templates, semantic commit summaries.
+- **Project management**: create a GitHub Project board (Backlog → In Progress → Review → Done), tag issues (data, model, infra, docs).
+- **Quality & testing**: schema checks, unit & property tests, reproducibility (seeds), pre-commit hooks, doc pages for QA and ethics.
 - **Linked data & metrics** pipeline (design) for backlog measurement (size, age, throughput).
 - **Micro‑simulation (DES)** engine (transparent) for staffing & policy scenarios.
 - **AI helpers**: Gaussian‑Process **emulator** and **Bayesian optimisation** to search policy space fast; **causal survival** scaffold for CoP escalation.
 - **CI/CD**: tests, lint, type checks, security scans, docs deploy, releases.
-- **Docs & governance**: DPIA template, Model Card, QA checklist, strategy pack.
+- **Docs & governance**: DPIA template, Model Card, QA checklist, strategy pack, user guide, QA/testing strategy, governance & ethics, project management workflow, and a big Q&A pack with model answers tailored to the panel prompts.
 - **No‑code UI**: `Streamlit` scenario runner for stakeholders.
+- **All are scripted via cli_nbwrap.py commands that call the existing notebook logic — ensuring policy-grade reproducibility.**
+- **“I compare simple, auditable baselines to complex models, use proper backtests, and publish an evaluation card with metrics, assumptions, risks/caveats, and ‘known-unknowns’.”**
+
 
 &nbsp; 
 
@@ -1100,10 +1457,263 @@ Backlog is a count; start with Poisson GLM; if variance >> mean, switch to NegBi
 Include investigators_on_duty in GLM, control for time and case-type mix; examine coefficient, partial dependence, and run counterfactual scenarios via the simulator.
 
 ## Multicollinearity handling
-Check VIF/correlations; use reference categories, drop redundant features, or regularise (ridge/elastic-net) if needed.
+- Measure Variance Inflation Factor (VIF) / correlations; use reference categories, drop redundant features, or regularise (ridge/elastic-net) if needed.
+- Multicollinearity doesn’t bias predictions; it mostly inflates SEs and makes β’s wobbly. If your goal is prediction, regularise and move on.
+- If you face separation (perfect prediction), that’s a different issue—consider penalised or Firth logistic; but that’s not the typical collinearity fix.
+- “I’d start by standardising and checking VIFs. If height and weight are collinear, I either 1) switch to BMI, 2) residualise weight on height and keep both height + residual_weight, or 3) fit a ridge-penalised logistic regression with cross-validated C. For interpretability, I’d report the joint contribution and show ALE plots rather than over-interpreting any single β.”
+
+### 1) Diagnose it
+- Pairwise r / heatmap (Pearson/Spearman) to spot obvious pairs.
+- VIF (Variance Inflation Factor): VIF > ~5–10 ⇒ problematic.
+- Condition index / eigenvalues of XᵀX: >30 with high variance-decomposition proportions ⇒ serious.
+
+#### Variance Inflation Factor (VIF)
+To check for multilinearity before regression, you can use the Variance Inflation Factor (VIF) to detect multicollinearity. VIF measures the increase in the variance of a regression coefficient caused by multicollinearity among predictor variables. It is calculated by regressing each independent variable against all other independent variables in the model to calculate the coefficient of determination or R-squared. A higher R-squared means a stronger relationship with other variables, leading to a higher VIF. Generally, a VIF above 5 indicates high multicollinearity, while values near 1 mean predictors are independent. Values between 1 and 5 show moderate correlation, which is sometimes acceptable, and values above 10 signal problematic multicollinearity requiring action. To detect multicollinearity, you can implement the VIF using the statsmodels library in Python, which calculates the VIF value for each feature in the dataset. This helps in identifying multicollinearity and taking necessary steps to address it. 
+```python
+import pandas as pd
+import statsmodels.api as sm
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+
+X = df[["height","weight","age","risk_score"]]  # your features
+X = sm.add_constant(X)
+vifs = pd.Series([variance_inflation_factor(X.values, i) for i in range(X.shape[1])],
+                 index=X.columns)
+print(vifs)
+```
+
+### 2) Remedies (from “least invasive” to “most transformative”)
+#### A) Standardise & centre (do this almost always)
+- Z-score numerics; centre terms that interact or have polynomials (reduces ill-conditioning; improves interpretability).
+- Doesn’t remove collinearity, but stabilises optimisation and coefficients.
+
+#### B) Drop or combine redundant variables
+- If height and weight are duplicative for your outcome, choose one with domain reasoning.
+- Or combine them: e.g., use BMI (weight / height²) instead of both.
+
+#### C) Residualise (orthogonalise) one on the other
+- Regress weight ~ height; use residual_weight as predictor with height.
+Interpretation: “weight for height”.
+```python
+import statsmodels.api as sm
+r = sm.OLS(df["weight"], sm.add_constant(df["height"])).fit()
+df["resid_weight"] = r.resid
+# Use height + resid_weight in your logistic model
+```
+
+#### D) Regularise the logistic regression (best general fix for prediction)
+- **Ridge** (L2) is excellent for multicollinearity: it keeps all variables but shrinks correlated β’s together.
+- **Elastic Net** (mix of L1/L2) if you also want sparsity. (Pure Lasso may arbitrarily drop one of a correlated pair.)
+```python
+from sklearn.linear_model import LogisticRegressionCV
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
+# Ridge logistic (penalty="l2"), CV on C; scoring could be "roc_auc"
+ridge_clf = make_pipeline(
+    StandardScaler(),
+    LogisticRegressionCV(
+        penalty="l2", solver="lbfgs", max_iter=2000,
+        Cs=20, cv=5, scoring="roc_auc", n_jobs=-1
+    )
+).fit(X_train, y_train)
+```
+
+**When you still want coefficient stories**: prefer **ridge** over lasso; report **confidence intervals via bootstrapping** and emphasise **effect of groups** (below).
+
+#### E) Dimension reduction
+- **PCA** (unsupervised) or **PLS** (supervised) to create orthogonal components, then fit logistic on components.
+- Pro: kills collinearity. Con: coefficients are on components, not original variables—explain via loadings.
+```python
+from sklearn.decomposition import PCA
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import Pipeline
+pca_logit = Pipeline([
+    ("scale", StandardScaler()),
+    ("pca", PCA(n_components=0.9)),    # keep 90% variance
+    ("logit", LogisticRegression(max_iter=2000))
+]).fit(X_train, y_train)
+```
+
+#### F) Group/Hierarchical modelling (when correlation comes from grouping)
+- If “team” and “policy” or “region” are **entangled**, a **mixed-effects** or **hierarchical Bayesian** model pools information and reduces spurious swapping among correlated fixed effects.
+
+
+### 3) Coding patterns for dummy variables & interactions
+- **Avoid the dummy trap**: drop one level as reference (**drop='first' in One-Hot Encoder**).
+- **Centre** continuous variables before building interactions/polynomials; this **reduces induced multicollinearity**.
+
+### 4) Interpreting under multicollinearity
+- Be explicit: “Individual β’s are unstable due to correlated predictors; we prioritise **predictive performance** and **policy-relevant contrasts**.”
+- Prefer **partial dependence / ALE** over raw coefficients for effect communication (ALE handles correlated features better than PDP/SHAP in some settings).
+- For **inference**, report **variance inflation**, use **ridge** (or **Bayesian normal priors**) and **present grouped effects** (e.g., “height + weight jointly improve AUC by X”).
+
+
+## Train / Test Split 
+- prove the model generalises and to avoid fooling ourselves.
+- Unbiased performance check.
+We train on one set (train) and keep another set unseen (test). The test set estimates real-world performance, not just how well the model memorised the training data.
+- Hyperparameter tuning without leakage.
+We search/tune on train (often via cross-validation) and touch the test set only once at the end. Using test data during tuning leaks information and inflates scores.
+Model selection.
+When comparing models, we pick the winner on validation/CV, then confirm on the test set to ensure the choice wasn’t luck.
+- Early stopping & calibration.
+A validation split lets you stop training before overfitting and adjust probability calibration; the test set then verifies these choices.
+- Reproducibility & automation.
+Separate train.py and test.py (or CLI commands) make pipelines repeatable (CI can run tests on every commit) and safer for deployment.
+- Time matters for forecasting.
+For time series, we split by time (past → future) rather than randomly, to mimic real deployment.
+
+```python
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.linear_model import LogisticRegression
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+model = LogisticRegression(max_iter=2000)
+cv_auc = cross_val_score(model, X_train, y_train, cv=5, scoring="roc_auc").mean()
+model.fit(X_train, y_train)        # train
+test_auc = model.score(X_test, y_test)  # final, unbiased check (don’t tune here)
+```
 
 ## Missing data strategy
-Parse all dates; derive intervals; explicit Unknown for categoricals; median/model-based imputation inside CV folds.
+- Parse all dates; derive intervals; explicit Unknown for categoricals; median/model-based imputation inside CV folds.
+- “Always add missingness indicators for key predictors; they often carry signal.”
+- “Imputation happens inside the CV pipeline to avoid leakage.”
+- “For dates, model intervals or censoring, not the dates themselves.”
+- **“If missingness could be MNAR, run delta-based sensitivity and report how conclusions change.”**
+- “Report performance by subgroups with high missingness to check for fairness drift.”
+- **“Assume MAR by default, diagnose patterns, and run a sensitivity analysis for MNAR.”**
+- **Impute when dropping data would bias results or reduce power, when the model requires complete inputs, and when the missingness is plausibly MAR—always inside a leakage-safe pipeline with missingness indicators; for targets or end-dates I avoid imputation and use censoring or task-appropriate models instead.**
+
+
+### 1) First principles: what kind of missingness?
+- **MCAR** (Missing Completely At Random): probability of missingness doesn’t depend on anything. Listwise deletion can be unbiased (but wastes data).
+- **MAR** (Missing At Random): depends on observed variables (e.g., riskier teams omit fields). OK for model-based imputation if you condition on the right vars.
+- **MNAR** (Missing Not At Random): depends on the unobserved value itself (e.g., very long delays not entered). Needs sensitivity analysis / explicit modelling.
+
+### Use imputation when…
+- Dropping rows would bias you or decimate sample size
+    - If missingness is MCAR/MAR and the column is predictive, impute to keep power and reduce selection bias.
+    - Rule of thumb: if >5–10% of rows would be dropped or the missingness is uneven across groups (e.g., a particular team), impute rather than delete.
+
+- Your model/stack can’t handle NaNs
+    - scikit-learn estimators generally require complete matrices. Put the imputer inside the pipeline so it’s fit on train only (no leakage).
+
+- You expect the same kind of missingness at inference
+    - If production inputs sometimes arrive blank (forms, integrations), train with the same imputation strategy you’ll use live; add missingness flags so the model can learn that “missing” itself carries signal.
+
+- The variable is important and plausibly MAR
+    - **weighting or risk occasionally blank—use median/iterative (MICE) + a _missing indicator to keep the signal and mitigate bias.**
+
+- Time-series gaps that are not structural
+    - Per-entity, forward/back fill or interpolation (no future leakage) when short gaps exist in operational metrics like “investigators on duty”.
+
+- Categorical predictors with blanks
+    - Map to an “Unknown” level (plus optional is_missing flag). This preserves rows and can be highly predictive.
+
+### Prefer alternatives (don’t impute) when…
+- Targets or event end-dates are missing
+    - Don’t impute the target. For time-to-event (e.g., missing pg_signoff_date), treat as right-censored and use survival analysis instead of inventing dates.
+
+- Missingness is structural (NA by design)
+    - E.g., a field only relevant for a subset of cases. Encode as “Not applicable” rather than guessing values.
+
+- Strong MNAR is suspected and the field isn’t critical
+    - If the value itself drives missingness and you can’t model that mechanism, consider dropping the variable, or run sensitivity analyses (delta adjustments/worst-case bounds) instead of hard imputation.
+
+- A tree/GBM that natively handles missing is in use
+    - XGBoost/LightGBM/CatBoost can route missing values natively. You may skip numeric imputation (still keep missingness indicators for transparency/auditing).
+
+### Picking the method (quick matrix)
+- Numeric, light missing (<10%), roughly MAR: median + is_missing flag.
+- Numeric, moderate/heavy missing (10–40%), relationships matter: Iterative/MICE (with trees or linear models) + flag.
+- Categorical: “Unknown” (or “NA by design”) + optional flag.
+- Time series: per-entity forward fill/back fill/interpolation; never peek into the future for forecasting.
+- Highly correlated pair (e.g., height & weight): consider deriving a composite (BMI) or residualising one on the other before imputing.
+
+
+### 2) Diagnose smartly (and use missingness as signal)
+- Rates & patterns: overall %, by column, by group (team/case type), and by time.
+- Co-missingness: are certain fields often missing together?
+- Predictability of missingness: model is_missing(col) with logistic regression vs. observed covariates—if predictable, treat missingness as informative.
+- Create flags: add binary indicators like col_missing for key fields; many models benefit from this.
+
+### 3) Practical rules of thumb
+- Dates: avoid imputing raw dates. Derive intervals (e.g., days_to_pg_signoff) from the dates you do have. If an end date is missing, treat it as censored (survival) rather than “0”.
+- Categoricals: add an “Unknown” level (keeps rows, preserves signal).
+- Numerics: start with median (robust); step up to KNN or Iterative (MICE) when relationships matter.
+- Trees/GBMs: still impute (or use native missing handling if the library supports it), plus keep missing flags.
+- Time series: impute within entity (e.g., per team) using forward/backward fill with guards, interpolation, or Kalman smoothing; never leak future info.
+- Targets vs features: if the target is missing, don’t impute—either drop those rows from supervised training or change the learning setup (survival, semi-supervised, etc.).
+
+### 4) Leakage-safe training discipline
+- Fit imputers inside your pipeline so they’re learned on the train folds only.
+- If using Multiple Imputation (MICE), repeat training across m completed datasets and pool estimates (Rubin’s rules) or average predictions; report between-imputation variance.
+- Always report performance by missingness strata (fairness/robustness check).
+
+### 5) Sensitivity analysis for MNAR
+- Delta adjustment: shift imputed values by plausible deltas (e.g., add +5 days to imputed intervals) and see if conclusions change.
+- Worst-case bounds: impute best/worst extremes to bound effects.
+- Pattern-mixture models: separate models for different missingness patterns; compare results.
+
+### 6) Sklearn patterns
+#### A) Tabular classification/regression (leak-proof)
+```python
+import pandas as pd
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import LogisticRegressionCV
+num_cols = ["weighting", "days_to_alloc", "some_numeric"]
+cat_cols = ["team", "case_type", "risk"]
+num_pipe = Pipeline([
+    ("impute", SimpleImputer(strategy="median")),
+    ("scale", StandardScaler()),
+])
+cat_pipe = Pipeline([
+    ("impute", SimpleImputer(strategy="most_frequent")),  # or constant "Unknown"
+    ("ohe", OneHotEncoder(handle_unknown="ignore"))
+])
+pre = ColumnTransformer([
+    ("num", num_pipe, num_cols),
+    ("cat", cat_pipe, cat_cols),
+])
+clf = Pipeline([
+    ("pre", pre),
+    ("logit", LogisticRegressionCV(
+        penalty="l2", solver="lbfgs", cv=5, max_iter=2000, scoring="roc_auc"))
+])
+clf.fit(X_train, y_train)   # imputers fitted on training folds only
+```
+
+#### B) Iterative (MICE-style) imputation when relationships matter
+```python
+from sklearn.experimental import enable_iterative_imputer  # noqa
+from sklearn.impute import IterativeImputer
+from sklearn.ensemble import RandomForestRegressor
+num_pipe = Pipeline([
+    ("mice", IterativeImputer(
+        estimator=RandomForestRegressor(n_estimators=200, n_jobs=-1),
+        initial_strategy="median",
+        max_iter=10, random_state=42))
+    # scaling optional after MICE
+])
+```
+
+#### C) Residualise dates into intervals (preferred to imputing dates)
+```python
+# Given date_received_opg and pg_signoff_date (maybe missing):
+df["days_to_pg_signoff"] = (df["pg_signoff_date"] - df["date_received_opg"]).dt.days
+df["days_to_pg_signoff_missing"] = df["days_to_pg_signoff"].isna().astype(int)
+# For supervised models, impute this interval; for survival, treat missing end as censored.
+```
+
+#### D) Time-series fill per group (no future leakage)
+```python
+def ts_impute(df, group="team", col="investigators_on_duty"):
+    return (df.sort_values(["team","date"])
+              .groupby(group, group_keys=False)[col]
+              .apply(lambda s: s.ffill().bfill().interpolate(limit_direction="both")))
+```
+
 
 ## Survival model choice
 Cox PH: handles censoring and yields hazard ratios for risk/case-type; sanity-check PH assumptions, report C-index.

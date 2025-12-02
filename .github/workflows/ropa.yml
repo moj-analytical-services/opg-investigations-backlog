@@ -1,0 +1,33 @@
+controller: 
+  name: Office of the Public Guardian (MoJ)
+  owner: Investigations Backlog Programme
+  dpo_contact: Leila.Yousefi@justice.gov.uk
+processing_purpose: Backlog modelling, resourcing, and policy scenario testing
+lawful_basis:
+  article6: Public task (UK GDPR 6(1)(e))
+  article9_special_category: [Substantial Public Interest – confirm with DPO]
+data_subjects: [Donors, Attorneys/third parties, OPG staff (investigators)]
+personal_data_categories:
+  - Case metadata (IDs pseudonymised), timings, case_type, risk flags
+  - Staffing metadata (role/team/FTE, pseudonymised staff_id)
+  - Exclusions: direct identifiers removed at source
+recipients_and_processors:
+  processors: 
+    - name: SIMUL8 (if SaaS used) 
+      location: EEA-only (to be confirmed)
+      sub_processors: [list or “none”]
+transfers:
+  outside_uk_eea: false   # if true, list safeguard e.g., SCCs
+retention:
+  raw_inputs: per AP schedule
+  model_outputs: PII-lean, minimal retention (e.g., 90 days) unless aggregated
+security_measures:
+  - AP boundary (no internet egress), S3 SSE-KMS, TLS in transit
+  - IAM RBAC, SSO/MFA, GitHub-gated access to Athena
+  - Logging/audit, pseudonymisation, data contracts & DQ checks in CI/CD
+automated_decisions: false
+sources: AP curated “gold” Athena tables
+links:
+  dpia: <link>
+  data_contracts: <repo/path or Glue table>
+  incident_response: <policy link>
