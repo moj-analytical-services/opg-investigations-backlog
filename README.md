@@ -119,7 +119,13 @@ opg-investigations-backlog/
 │   └── data_processing.py   # reusable data-loading and cleaning functions
 │   └── data_quality.py      # Data Quality Checks class
 │   └── notebook_code.py     # verbatim code extracted from your notebook (magics commented)
-│   └── preprocessing.py     # re-exports: normalise_col, parse_date_series, engineer, ...
+│   └── investigation_backlog_combined.py      # keep as-is
+│   └── inv_backlog/
+│   └── preprocessing.py     # re-exports: normalise_col, parse_date_series, loading + engineering
+│   └── time_series.py          # event log, WIP, backlog, daily panel
+│   └── interval_analysis.py    # IntervalAnalysis utilities
+│   └── eda_opg.py              # EDAConfig + OPGInvestigationEDA
+│   └── demo_pipeline.py        # end-to-end demo runner
 │   └── intervals.py         # re-exports: build_event_log, build_wip_series, build_backlog_series, ...
 │   └── analysis_demo.py     # last-year interval analysis by team (non-invasive)
 │   └── distributions.py     # distribution of interval changes by case_type across years

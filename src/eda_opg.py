@@ -51,6 +51,51 @@ except Exception:
 # -------------------------------
 
 
+# eda_opg.py
+# Advanced, object-oriented EDA utilities tailored to OPG Investigation Backlog data.
+# We estimate time to PG sign-off with a Kaplan–Meier curve so we can use both completed and still-open cases without bias. From the survival curve we read median and tail quantiles (P80/P90). Those feed capacity planning, SLAs, and discrete-event simulation. For example, High-risk cases show a longer P90, so adding experienced reviewers there reduces the tail and the visible backlog. We verify group differences with a log-rank test, and we export quantiles by case type as inputs to the microsimulation.
+
+# For each investigation case we care about “How long from when OPG receives the concern until PG signs it off?”. Many cases are still open on the day you analyse the data. Those open cases are right-censored: we know they’ve already taken at least X days, but we don’t yet know the final total. If you simply drop open cases or pretend they finished today, you’ll bias results (usually underestimating true times).
+
+from dataclasses import dataclass  # dataclass for a clear, typed configuration object
+from typing import (
+    List,
+    Tuple,
+)  # precise type hints for maintainability and IDE help
+import warnings  # to warn (not crash) when optional deps are missing
+
+
+# Optional scientific/statistical packages.
+try:
+    from lifelines import (
+        KaplanMeierFitter,
+    )  # survival analysis (censoring-aware) - non-parametric stats
+
+    _HAS_LIFELINES = True  # flag for availability
+except Exception:
+    _HAS_LIFELINES = False  # if not installed, we degrade gracefully
+
+try:
+    from scipy.stats import chi2_contingency  # for Cramér’s V (categorical association)
+
+    _HAS_SCIPY = True
+except Exception:
+    _HAS_SCIPY = False
+
+try:
+    import statsmodels.api as sm  # for VIF (variance inflation factor) to remove multicolinearity
+    from statsmodels.stats.outliers_influence import variance_inflation_factor
+
+    _HAS_STATSMODELS = True
+except Exception:
+    _HAS_STATSMODELS = False
+
+
+# -------------------------------
+# 1) Configuration for the EDA run
+# -------------------------------
+
+
 @dataclass
 class EDAConfig:
     """
@@ -94,7 +139,7 @@ class OPGInvestigationEDA:
         """
         self.df = df.copy()  # do not mutate the caller's DataFrame
         self.cfg = config  # keep typed configuration
-        self._derive_standard_fields()  # add days_to_signoff + censor flags up-front
+        self._derive_standard_fields()  # add days_to_alloc + censor flags up-front
 
     # ---------------------------
     # Core derivations and checks
@@ -133,14 +178,14 @@ class OPGInvestigationEDA:
         )
 
         # Derive time-to-allocate(days) similarly; not always used, but often requested.
-        self.df["days_to_signoff"] = (
+        self.df["days_to_allocate"] = (
             self.df[self.cfg.date_allocated] - self.df[self.cfg.date_received]
         ).dt.days
-        self.df.loc[self.df["days_to_signoff"] < 0, "days_to_signoff"] = np.nan
+        self.df.loc[self.df["days_to_allocate"] < 0, "days_to_allocate"] = np.nan
 
         # Censor flag for allocate: 1 if allocated date exists.
-        self.df["event_signedoff"] = (
-            self.df[self.cfg.date_signed_off].notna().astype(int)
+        self.df["event_allocated"] = (
+            self.df[self.cfg.date_allocated].notna().astype(int)
         )
 
     # ---------------------------
@@ -240,7 +285,9 @@ class OPGInvestigationEDA:
         # By default, dropna() works row-wise (axis=0) and drops rows where at least one value is missing.
         # If you only want to drop rows where all values are missing, you can use:self.df[cols].dropna(how='all')
         # If you want to drop rows with NaN only in specific columns, you can pass subset=cols.
-        ser = self.df[col].dropna()  # ignore NaN
+        ser = self.df[
+            col
+        ].dropna()  # ignore NaN and drops rows where at least one value is missing.
         q1, q3 = ser.quantile([0.25, 0.75])  # first and third quartiles
         iqr = q3 - q1  # interquartile range
         lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr  # Tukey's rule bounds
@@ -476,14 +523,14 @@ class OPGInvestigationEDA:
     ) -> pd.DataFrame:
         """
         Compute target mean across bins of a numeric column and levels of a categorical column.
-        Useful to screen interactions (e.g., risk_band × days_to_signoff -> legal_review rate).
+        Useful to screen interactions (e.g., risk_band × days_to_alloc -> legal_review rate).
         quickly see if a numeric feature and a categorical feature interact to change the
-        target rate (e.g., legal review rate varies by risk_band and days_to_signoff bins).
+        target rate (e.g., legal review rate varies by risk_band and days_to_alloc bins).
         Example: You can spot patterns like
-        “High risk + long days_to_signoff → much higher legal-review rate”,
+        “High risk + long days_to_alloc → much higher legal-review rate”,
         justifying an interaction term or different triage rules.
-        tab = eda.binned_interaction_rate("days_to_signoff", "risk_band", target="legal_review", q=5)
-        print(tab)  # a table of legal_review rate by risk_band (rows) and days_to_signoff bins (columns)
+        tab = eda.binned_interaction_rate("days_to_alloc", "risk_band", target="legal_review", q=5)
+        print(tab)  # a table of legal_review rate by risk_band (rows) and days_to_alloc bins (columns)
         """
 
         target = (
@@ -641,7 +688,7 @@ class OPGInvestigationEDA:
         """
         Produce a stakeholder-friendly monthly KPI table by team (if team_col set):
         - backlog (last of month),
-        - median days_to_signoff,
+        - median days_to_alloc,
         - legal review rate.
         Produce a stakeholder-ready monthly table per team: backlog,
         median time to allocation, and legal-review rate.
@@ -671,8 +718,8 @@ class OPGInvestigationEDA:
                     ("backlog", "last") if "backlog" in tmp.columns else ("id", "count")
                 ),
                 # 4) Backlog: the last value in each month (if available). Otherwise, fallback to a count.
-                median_signoff=("days_to_signoff", "median"),
-                # 5) Median time-to-signoff (robust to skew).
+                median_alloc=("days_to_alloc", "median"),
+                # 5) Median time-to-allocation (robust to skew).
                 legal_rate=(
                     (self.cfg.target_col, "mean")
                     if self.cfg.target_col
@@ -684,132 +731,3 @@ class OPGInvestigationEDA:
         )
         return out.sort_values([self.cfg.team_col, "__month"])
         # 7) Return a tidy table sorted by team and month.
-
-
-# # demo_eda.py
-# # Small, self-contained demo that exercises key methods on synthetic OPG-like data.
-
-# import numpy as np
-# import pandas as pd
-# from eda_opg import EDAConfig, OPGInvestigationEDA
-
-# # ----- 1) Create a small synthetic dataset for demonstration -----
-# rng = np.random.default_rng(42)
-# n = 2000
-
-# # Base dates
-# start = pd.Timestamp("2024-01-01")
-# recv_dates = start + pd.to_timedelta(rng.integers(0, 300, size=n), unit="D")
-
-# # Allocation occurs for ~85% within 1-30 days; else censored (NaT)
-# alloc_delays = rng.integers(1, 31, size=n)
-# allocated_mask = rng.random(size=n) < 0.85
-# alloc_dates = pd.Series(recv_dates) + pd.to_timedelta(alloc_delays, unit="D")
-# alloc_dates = alloc_dates.where(allocated_mask, pd.NaT)
-
-# # Sign-off for ~70% within 20-120 days from received; else censored
-# signoff_delays = rng.integers(20, 121, size=n)
-# so_mask = rng.random(size=n) < 0.70
-# signoff_dates = pd.Series(recv_dates) + pd.to_timedelta(signoff_delays, unit="D")
-# signoff_dates = signoff_dates.where(so_mask, pd.NaT)
-
-# # Categorical fields
-# case_types = rng.choice(["LPA", "Deputyship", "Other"], size=n, p=[0.6, 0.3, 0.1])
-# risk_band = rng.choice(["Low", "Medium", "High"], size=n, p=[0.5, 0.35, 0.15])
-# teams = rng.choice(["Team A", "Team B", "Team C"], size=n, p=[0.4, 0.4, 0.2])
-# region = rng.choice(["North", "Midlands", "South"], size=n)
-
-# # Daily ops fields
-# investigators_on_duty = rng.integers(8, 20, size=n)  # rough proxy
-# allocations = rng.integers(0, 25, size=n)            # allocated on that day
-# backlog = np.maximum(0, 500 + rng.normal(0, 60, size=n).astype(int))  # evolving backlog proxy
-
-# # Target: legal review ~5%, with higher odds for High risk and longer allocation delay
-# # We'll simulate it based on logits to mimic a real signal
-# base_logit = -3.0 + 0.02 * np.nan_to_num(alloc_dates - recv_dates).astype("timedelta64[D]").astype(float)
-# risk_bump = np.select([risk_band == "High", risk_band == "Medium"], [1.2, 0.4], default=0.0)
-# logit = base_logit + risk_bump
-# prob = 1 / (1 + np.exp(-logit))
-# legal_review = (rng.random(size=n) < prob).astype(int)
-
-# # Assemble DataFrame
-# df = pd.DataFrame({
-#     "id": np.arange(1, n + 1),
-#     "date_received_opg": recv_dates,
-#     "date_allocated_investigator": alloc_dates,
-#     "date_pg_signoff": signoff_dates,
-#     "case_type": case_types,
-#     "risk_band": risk_band,
-#     "team": teams,
-#     "region": region,
-#     "investigators_on_duty": investigators_on_duty,
-#     "allocations": allocations,
-#     "backlog": backlog,
-#     "legal_review": legal_review,
-# })
-
-# # ----- 2) Configure columns and instantiate the EDA toolkit -----
-# cfg = EDAConfig(
-#     id_col="id",
-#     date_received="date_received_opg",
-#     date_allocated="date_allocated_investigator",
-#     date_signed_off="date_pg_signoff",
-#     target_col="legal_review",
-#     numeric_cols=["days_to_signoff", "investigators_on_duty", "allocations", "backlog"],
-#     categorical_cols=["case_type", "risk_band", "team", "region"],
-#     time_index_col="date_received_opg",
-#     team_col="team",
-#     risk_col="risk_band",
-#     case_type_col="case_type",
-# )
-
-# eda = OPGInvestigationEDA(df, cfg)
-
-# # ----- 3) Run a few core EDA tasks (print or log these in practice) -----
-# print("\n== QUICK OVERVIEW ==")
-# print(eda.quick_overview())
-
-# print("\n== MISSINGNESS ==")
-# print(eda.missingness_matrix().head(10))
-# print("Missing 'days_to_signoff' vs target:\n", eda.missing_vs_target("days_to_signoff"))
-
-# print("\n== OUTLIERS (days_to_signoff) ==")
-# print(eda.iqr_outliers("days_to_signoff"))
-
-# print("\n== CATEGORICAL SUMMARY (case_type × risk_band) ==")
-# summary = eda.group_summary(
-#     by=["case_type", "risk_band"],
-#     metrics={"n": ("id", "count"), "legal_rate": ("legal_review", "mean"), "med_alloc": ("days_to_signoff", "median")},
-# )
-# print(summary.head(12))
-
-# print("\n== NUMERIC CORRELATIONS (Spearman) ==")
-# print(eda.numeric_correlations("spearman"))
-
-# print("\n== REDUNDANCY DROP LIST (|r|>0.9) ==")
-# print(eda.redundancy_drop_list())
-
-# print("\n== CLASS IMBALANCE ==")
-# print(eda.imbalance_summary())
-
-# print("\n== LEAKAGE SCAN ==")
-# print(eda.leakage_scan(["post", "signed", "decision", "outcome"]))
-
-# print("\n== INTERACTION: risk_band × binned days_to_signoff -> legal_review rate ==")
-# print(eda.binned_interaction_rate("days_to_signoff", "risk_band"))
-
-# print("\n== RESAMPLED TIME SERIES (daily) ==")
-# ts = eda.resample_time_series({
-#     "backlog": ("backlog", "last"),
-#     "inv_mean": ("investigators_on_duty", "mean"),
-# })
-# print(ts.tail())
-
-# print("\n== LAG CORRELATIONS: backlog vs inv_mean ==")
-# print(eda.lag_correlations(ts["backlog"], ts["inv_mean"]))
-
-# print("\n== KM QUANTILES by risk_band (allocation) ==")
-# print(eda.km_quantiles_by_group("days_to_signoff", "event_alloc", "risk_band"))
-
-# print("\n== MONTHLY KPIs by team ==")
-# print(eda.monthly_kpis().head(12))
