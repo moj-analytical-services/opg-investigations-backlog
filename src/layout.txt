@@ -1,3 +1,12 @@
+src/
+  investigation_backlog_combined.py      # keep as-is
+  inv_backlog/
+    __init__.py
+    preprocessing.py        # loading + engineering
+    time_series.py          # event log, WIP, backlog, daily panel
+    interval_analysis.py    # IntervalAnalysis utilities
+    eda_opg.py              # EDAConfig + OPGInvestigationEDA
+    demo_pipeline.py        # end-to-end demo runner
 """
 investigation_backlog_combined
 ================================
@@ -3414,8 +3423,8 @@ print(eda.monthly_kpis().head(12))
 class InvestigationBacklogProject:
     """
     High-level helper that wires together the core engineering
-    pipeline from ``Build_Investigator_Daily_from_Raw``
-    and the EDA toolkit from ``eda``.
+    pipeline from ``Build_Investigator_Daily_from_Raw_14_11_25``
+    and the EDA toolkit from ``eda.ipynb``.
 
     Typical usage
     -------------

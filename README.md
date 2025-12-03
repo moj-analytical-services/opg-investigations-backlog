@@ -124,6 +124,7 @@ opg-investigations-backlog/
 │   └── preprocessing.py     # re-exports: normalise_col, parse_date_series, loading + engineering
 │   └── time_series.py          # event log, WIP, backlog, daily panel
 │   └── interval_analysis.py    # IntervalAnalysis utilities
+│   └── demo_interval_viz.py
 │   └── eda_opg.py              # EDAConfig + OPGInvestigationEDA
 │   └── demo_pipeline.py        # end-to-end demo runner
 │   └── intervals.py         # re-exports: build_event_log, build_wip_series, build_backlog_series, ...

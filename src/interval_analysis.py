@@ -9,7 +9,7 @@
 # (b) analyse the distribution of *time-interval changes/fluctuation since last year*.
 
 # **Key capabilities:**
-# - Build a dataframe with the columns:  
+# - Build a dataframe with the columns:
 #   `date, staff_id, team, case_id, case_type, concern_type, status, dt_alloc_invest, dt_pg_signoff, dt_received_inv, dt_alloc_team, dt_close, dt_sent_to_ca, days_to_pg_signoff, fte, weighting, wip, wip_load, time_since_last_pickup, weeks_since_start, is_new_starter, backlog_available, term_flag, season, dow, bank_holiday, event_newcase, event_legal, event_court, event_pg_signoff, event_sent_to_ca, event_flagged, backlog`.
 # - If you already compute a backlog series with an existing function (e.g. `build_backlog_series`),
 #   you can pass it in and it will be merged. If not, a per-date backlog is computed as the
@@ -19,10 +19,13 @@
 
 # > Usage examples are provided in comments at the bottom of the new code cell.
 
+from pathlib import Path
 import pandas as pd
 import numpy as np
 from dataclasses import dataclass
 from typing import Iterable, Optional, Dict, Any
+import matplotlib.pyplot as plt
+
 
 y = 4  # Number of years for analysis to start with
 
@@ -567,3 +570,159 @@ IntervalAnalysis.volatility_score = staticmethod(_volatility_score_safe)
 print("Patched IntervalAnalysis.volatility_score to support metric aliases.")
 
 
+def plot_pg_signoff_monthly_trends(
+    di: pd.DataFrame,
+    outdir: Path | str = "data/out/plot/plots",
+) -> dict:
+    """
+    Plot monthly median and month-over-month delta of `days_to_pg_signoff`
+    by case_type, plus overall ("ALL case types") trends.
+    Saves PNGs and also displays the plots.
+
+    Parameters
+    ----------
+    di : pd.DataFrame
+        Interval frame from IntervalAnalysis.build_interval_frame(...).
+    outdir : Path or str, default "data/out/plot/plots"
+        Directory where PNG plots will be saved.
+
+    Returns
+    -------
+    dict
+        {"trend": ..., "trend_all": ..., "plots": {...}}
+    """
+
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    print("[plot_pg_signoff_monthly_trends] outdir =", outdir)
+
+    # --- Compute monthly trend by case_type ---
+    trend = IntervalAnalysis.monthly_trend(
+        di,
+        metric="days_to_pg_signoff",
+        agg="median",
+        by=["case_type"],
+    ).copy()
+    trend["month"] = pd.to_datetime(trend["yyyymm"] + "-01")
+
+    piv = trend.pivot(
+        index="month", columns="case_type", values="days_to_pg_signoff"
+    ).sort_index()
+    piv_delta = trend.pivot(
+        index="month", columns="case_type", values="mom_delta"
+    ).sort_index()
+
+    # 1) Monthly median lines
+    plt.figure(figsize=(16, 9))
+    for col in piv.columns:
+        plt.plot(piv.index, piv[col], label=str(col))
+    plt.title("Monthly median: days_to_pg_signoff by case_type")
+    plt.xlabel("Month")
+    plt.ylabel("Days to PG signoff (median)")
+    plt.xticks(rotation=45)
+    plt.subplots_adjust(right=0.85, top=0.92, bottom=0.15)
+    plt.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=3)
+    plot1 = outdir / "monthly_trend_days_to_pg_signoff_by_case_type.png"
+    plt.savefig(plot1, bbox_inches="tight", dpi=150)
+    plt.show()
+
+    # 2) Month-over-month delta lines
+    plt.figure(figsize=(16, 9))
+    for col in piv_delta.columns:
+        plt.plot(piv_delta.index, piv_delta[col], label=str(col))
+    plt.title("Monthly MoM delta: days_to_pg_signoff by case_type")
+    plt.xlabel("Month")
+    plt.ylabel("MoM delta (days)")
+    plt.xticks(rotation=45)
+    plt.legend()
+    plot2 = outdir / "monthly_mom_delta_days_to_pg_signoff_by_case_type.png"
+    plt.savefig(plot2, bbox_inches="tight", dpi=150)
+    plt.show()
+
+    # --- Overall ("all case types") monthly trend & MoM delta ---
+    try:
+        trend_all = IntervalAnalysis.monthly_trend(
+            di, metric="days_to_pg_signoff", agg="median"  # no 'by' -> overall
+        ).copy()
+        trend_all["month"] = pd.to_datetime(trend_all["yyyymm"] + "-01")
+    except Exception:
+        trend_all = trend.groupby("yyyymm", as_index=False).agg(
+            days_to_pg_signoff=("days_to_pg_signoff", "median"),
+            mom_delta=("mom_delta", "median"),
+        )
+        trend_all["month"] = pd.to_datetime(trend_all["yyyymm"] + "-01")
+
+    s_all = trend_all.set_index("month")["days_to_pg_signoff"].sort_index()
+    s_all_delta = trend_all.set_index("month")["mom_delta"].sort_index()
+
+    # 3) Standalone: All case types — monthly median
+    plt.figure(figsize=(16, 9))
+    plt.plot(s_all.index, s_all.values, marker="o")
+    plt.title("Monthly median: days_to_pg_signoff — ALL case types")
+    plt.xlabel("Month")
+    plt.ylabel("Days to PG signoff (median)")
+    plt.xticks(rotation=45)
+    plot3 = outdir / "monthly_trend_days_to_pg_signoff_ALL.png"
+    plt.savefig(plot3, bbox_inches="tight", dpi=150)
+    plt.show()
+
+    # 4) Standalone: All case types — MoM delta
+    plt.figure(figsize=(16, 9))
+    plt.plot(s_all_delta.index, s_all_delta.values, marker="o")
+    plt.title("Monthly MoM delta: days_to_pg_signoff — ALL case types")
+    plt.xlabel("Month")
+    plt.ylabel("MoM delta (days)")
+    plt.xticks(rotation=45)
+    plot4 = outdir / "monthly_mom_delta_days_to_pg_signoff_ALL.png"
+    plt.savefig(plot4, bbox_inches="tight", dpi=150)
+    plt.show()
+
+    # 5) Overlay with ALL (median)
+    plt.figure(figsize=(16, 9))
+    for col in piv.columns:
+        plt.plot(piv.index, piv[col], alpha=0.6, label=str(col))
+    plt.plot(s_all.index, s_all.values, linewidth=3, label="ALL case types")
+    plt.title("Monthly median: days_to_pg_signoff by case_type + ALL")
+    plt.xlabel("Month")
+    plt.ylabel("Days to PG signoff (median)")
+    plt.xticks(rotation=45)
+    plt.legend(ncol=2, fontsize=8)
+    plot5 = outdir / "monthly_trend_days_to_pg_signoff_by_case_type_with_ALL.png"
+    plt.savefig(plot5, bbox_inches="tight", dpi=150)
+    plt.show()
+
+    # 6) Overlay with ALL (delta)
+    plt.figure(figsize=(16, 9))
+    for col in piv_delta.columns:
+        plt.plot(piv_delta.index, piv_delta[col], alpha=0.6, label=str(col))
+    plt.plot(s_all_delta.index, s_all_delta.values, linewidth=3, label="ALL case types")
+    plt.title("Monthly MoM delta: days_to_pg_signoff by case_type + ALL")
+    plt.xlabel("Month")
+    plt.ylabel("MoM delta (days)")
+    plt.xticks(rotation=45)
+    plt.legend(ncol=2, fontsize=8)
+    plot6 = outdir / "monthly_mom_delta_days_to_pg_signoff_by_case_type_with_ALL.png"
+    plt.savefig(plot6, bbox_inches="tight", dpi=150)
+    plt.show()
+
+    print("[plot_pg_signoff_monthly_trends] Saved plots to:")
+    print(" ", plot1)
+    print(" ", plot2)
+    print(" ", plot3)
+    print(" ", plot4)
+    print(" ", plot5)
+    print(" ", plot6)
+
+    return {
+        "trend": trend,
+        "trend_all": trend_all,
+        "plots": {
+            "by_case_type": plot1,
+            "by_case_type_delta": plot2,
+            "all": plot3,
+            "all_delta": plot4,
+            "by_case_type_with_all": plot5,
+            "by_case_type_delta_with_all": plot6,
+        },
+    }

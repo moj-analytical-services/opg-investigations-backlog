@@ -1,8 +1,10 @@
-
 import pandas as pd
-import numpy as np
 
-from preprocessing import date_horizon  # or other helpers if needed
+from preprocessing import (
+    month_to_season,
+    is_term_month,
+    date_horizon,
+)  # or other helpers if needed
 
 
 # ## build_event_log
@@ -16,11 +18,6 @@ from preprocessing import date_horizon  # or other helpers if needed
 # - The meta JSON keeps useful context for each event without making the table very wide and repetitive.
 # - Restricting to the computed horizon ensures the log always aligns with your agreed analysis window.
 
-
-
-# -------------------------------------------------------------
-# Function: build_event_log()
-# -------------------------------------------------------------
 
 # -------------------------------------------------------------
 # Function: build_event_log()
@@ -304,7 +301,6 @@ def build_event_log(
     return ev
 
 
-    
 # - Build a day-by-day series showing how many cases each investigator has “in progress” (WIP), and an optional workload measure that accounts for case complexity and staff FTE.
 
 # - A case is counted as WIP from the day it’s allocated to an investigator until the earliest of:
@@ -592,11 +588,6 @@ def build_wip_series(
     return out
 
 
-# -------------------------------------
-# TIME SERIES ANALYSIS
-# -------------------------------------
-
-
 # -------------------------------------------------------------
 # Function: build_backlog_series()
 # -------------------------------------------------------------
@@ -878,7 +869,7 @@ def build_backlog_series(
     return out
 
 
-# - Build a daily time series showing the size of the allocation backlog: 
+# - Build a daily time series showing the size of the allocation backlog:
 # - Calculate ow many cases have been received into Investigations but not yet allocated to an investigator.
 
 # - It builds a timeline of the allocation backlog — how many cases have arrived in Investigations but haven’t yet been allocated to an investigator — day by day (or week by week).
@@ -904,7 +895,6 @@ def build_backlog_series(
 # - Transparent: shows both cumulative inputs (received/allocated) and the resulting backlog; we publish cumulative received and allocated alongside the backlog so you can audit the numbers.
 # - Robust: it works even if some days have no activity; it also can clip the backlog at zero to avoid confusing negatives; prevents negative backlog and handles days with no activity cleanly.
 # - Flexible & practical: business-day filtering and weekly/monthly views match how teams actually review performance; it can compute a weighted version if you want a complexity-aware measure.
-
 
 
 # - Builds the daily picture of staff activity and backlog pressure across the investigation process.
@@ -940,6 +930,7 @@ def build_backlog_series(
 # -------------------------------------------------------------
 # Function: build_daily_panel()
 # -------------------------------------------------------------
+
 
 def build_daily_panel(
     typed: pd.DataFrame,
@@ -1311,7 +1302,6 @@ def build_daily_panel(
     return daily, backlog, events
 
 
-
 # # Summerise
 # - Rolls up the detailed daily staff panel into team-level (or any custom grouping) time series, to quickly see trends like “total WIP per team per day/week” or “how many new cases did Team A pick up last month?”.
 
@@ -1506,4 +1496,3 @@ def summarise_daily_panel(
 # # Save events DataFrame to CSV
 # custom.to_csv(OUT_DIR / "Custom_Summary.csv", index=False)
 # print(custom)
-

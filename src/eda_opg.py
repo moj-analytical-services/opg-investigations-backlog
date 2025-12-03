@@ -7,7 +7,7 @@
 from __future__ import (
     annotations,
 )  # ensures forward refs in type hints work in Python <3.11
-from dataclasses import dataclass  # dataclass for a clear, typed configuration object
+
 from typing import (
     Dict,
     Iterable,
@@ -19,6 +19,8 @@ import warnings  # to warn (not crash) when optional deps are missing
 
 import numpy as np  # numerical work (corr, quantiles)
 import pandas as pd  # core dataframe operations
+from dataclasses import dataclass  # dataclass for a clear, typed configuration object
+
 
 # Optional scientific/statistical packages.
 try:
@@ -56,39 +58,6 @@ except Exception:
 # We estimate time to PG sign-off with a Kaplan–Meier curve so we can use both completed and still-open cases without bias. From the survival curve we read median and tail quantiles (P80/P90). Those feed capacity planning, SLAs, and discrete-event simulation. For example, High-risk cases show a longer P90, so adding experienced reviewers there reduces the tail and the visible backlog. We verify group differences with a log-rank test, and we export quantiles by case type as inputs to the microsimulation.
 
 # For each investigation case we care about “How long from when OPG receives the concern until PG signs it off?”. Many cases are still open on the day you analyse the data. Those open cases are right-censored: we know they’ve already taken at least X days, but we don’t yet know the final total. If you simply drop open cases or pretend they finished today, you’ll bias results (usually underestimating true times).
-
-from dataclasses import dataclass  # dataclass for a clear, typed configuration object
-from typing import (
-    List,
-    Tuple,
-)  # precise type hints for maintainability and IDE help
-import warnings  # to warn (not crash) when optional deps are missing
-
-
-# Optional scientific/statistical packages.
-try:
-    from lifelines import (
-        KaplanMeierFitter,
-    )  # survival analysis (censoring-aware) - non-parametric stats
-
-    _HAS_LIFELINES = True  # flag for availability
-except Exception:
-    _HAS_LIFELINES = False  # if not installed, we degrade gracefully
-
-try:
-    from scipy.stats import chi2_contingency  # for Cramér’s V (categorical association)
-
-    _HAS_SCIPY = True
-except Exception:
-    _HAS_SCIPY = False
-
-try:
-    import statsmodels.api as sm  # for VIF (variance inflation factor) to remove multicolinearity
-    from statsmodels.stats.outliers_influence import variance_inflation_factor
-
-    _HAS_STATSMODELS = True
-except Exception:
-    _HAS_STATSMODELS = False
 
 
 # -------------------------------
@@ -173,9 +142,7 @@ class OPGInvestigationEDA:
         self.df.loc[self.df["days_to_signoff"] < 0, "days_to_signoff"] = np.nan
 
         # Censor flag for signed_off event: 1 if signed_off exists, else 0.
-        self.df["event_signed_off"] = (
-            self.df[self.cfg.date_signed_off].notna().astype(int)
-        )
+        self.df["event_signoff"] = self.df[self.cfg.date_signed_off].notna().astype(int)
 
         # Derive time-to-allocate(days) similarly; not always used, but often requested.
         self.df["days_to_allocate"] = (
@@ -184,9 +151,7 @@ class OPGInvestigationEDA:
         self.df.loc[self.df["days_to_allocate"] < 0, "days_to_allocate"] = np.nan
 
         # Censor flag for allocate: 1 if allocated date exists.
-        self.df["event_allocated"] = (
-            self.df[self.cfg.date_allocated].notna().astype(int)
-        )
+        self.df["event_alloc"] = self.df[self.cfg.date_allocated].notna().astype(int)
 
     # ---------------------------
     # 0) Quick structural summary
@@ -731,3 +696,6 @@ class OPGInvestigationEDA:
         )
         return out.sort_values([self.cfg.team_col, "__month"])
         # 7) Return a tidy table sorted by team and month.
+
+
+__all__ = ["EDAConfig", "OPGInvestigationEDA"]
