@@ -145,10 +145,10 @@ class OPGInvestigationEDA:
         self.df["event_signoff"] = self.df[self.cfg.date_signed_off].notna().astype(int)
 
         # Derive time-to-allocate(days) similarly; not always used, but often requested.
-        self.df["days_to_allocate"] = (
+        self.df["days_to_alloc"] = (
             self.df[self.cfg.date_allocated] - self.df[self.cfg.date_received]
         ).dt.days
-        self.df.loc[self.df["days_to_allocate"] < 0, "days_to_allocate"] = np.nan
+        self.df.loc[self.df["days_to_alloc"] < 0, "days_to_alloc"] = np.nan
 
         # Censor flag for allocate: 1 if allocated date exists.
         self.df["event_alloc"] = self.df[self.cfg.date_allocated].notna().astype(int)
