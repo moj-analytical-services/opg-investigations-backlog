@@ -10,7 +10,7 @@
 
 # **Key capabilities:**
 # - Build a dataframe with the columns:
-#   `date, staff_id, team, case_id, case_type, concern_type, status, dt_alloc_invest, dt_pg_signoff, dt_received_inv, dt_alloc_team, dt_close, dt_sent_to_ca, days_to_pg_signoff, fte, weighting, wip, wip_load, time_since_last_pickup, weeks_since_start, is_new_starter, backlog_available, term_flag, season, dow, bank_holiday, event_newcase, event_legal, event_court, event_pg_signoff, event_sent_to_ca, event_flagged, backlog`.
+#   `date, staff_id, team, case_id, case_type, concern_type, status, dt_alloc_invest, dt_pg_signoff, dt_received_inv, dt_alloc_team, dt_close, dt_legal_req_1, days_to_pg_signoff, fte, weighting, wip, wip_load, time_since_last_pickup, weeks_since_start, is_new_starter, backlog_available, term_flag, season, dow, bank_holiday, event_newcase, event_legal, event_court, event_pg_signoff, event_sent_to_ca, event_flagged, backlog`.
 # - If you already compute a backlog series with an existing function (e.g. `build_backlog_series`),
 #   you can pass it in and it will be merged. If not, a per-date backlog is computed as the
 #   number of cases with `dt_received_inv <= date` and (`dt_close` is null or `dt_close > date`).
@@ -86,7 +86,11 @@ class IntervalAnalysis:
         "dt_alloc_team",
         "dt_close",
         "dt_sent_to_ca",
+        "dt_legal_req_1",
         "days_to_pg_signoff",
+        "days_to_alloc",
+        "days_recieved_to_legal_review",
+        "days_alloc_to_req_legal_review",
         "fte",
         "weighting",
         "wip",
@@ -99,12 +103,14 @@ class IntervalAnalysis:
         "season",
         "dow",
         "bank_holiday",
+        "event_req_legal_review",
         "event_newcase",
         "event_legal",
         "event_court",
         "event_pg_signoff",
-        "event_sent_to_ca",
         "event_flagged",
+        "legal_review",
+        "legal_review_cat",
         "backlog",  # <-- numeric backlog count per date
     ]
 
@@ -121,7 +127,6 @@ class IntervalAnalysis:
     ) -> pd.DataFrame:
         """
         Construct a dataframe matching the requested schema, with a numeric 'backlog' column.
-        This DOES NOT modify existing notebook functions; it can be used alongside them.
         If a backlog series is not provided, it is computed per observed 'date' as:
             backlog(date) = #cases with (dt_received_inv <= date) and (dt_close isna or dt_close > date)
         """
@@ -134,7 +139,7 @@ class IntervalAnalysis:
             "dt_received_inv",
             "dt_alloc_team",
             "dt_close",
-            "dt_sent_to_ca",
+            "dt_legal_req_1",
         ]
         df = _ensure_columns(
             df,
@@ -167,6 +172,24 @@ class IntervalAnalysis:
         # Primary interval(s)
         df["days_to_pg_signoff"] = (
             ((df["dt_pg_signoff"] - df["dt_alloc_invest"]).dt.days)
+            .astype("float")
+            .replace({np.inf: np.nan, -np.inf: np.nan})
+        )
+
+        df["days_to_alloc"] = (
+            ((df["dt_alloc_invest"] - df["dt_received_inv"]).dt.days)
+            .astype("float")
+            .replace({np.inf: np.nan, -np.inf: np.nan})
+        )
+
+        df["days_alloc_to_req_legal_review"] = (
+            ((df["dt_legal_req_1"] - df["dt_alloc_invest"]).dt.days)
+            .astype("float")
+            .replace({np.inf: np.nan, -np.inf: np.nan})
+        )
+
+        df["days_recieved_to_legal_review"] = (
+            ((df["dt_legal_req_1"] - df["dt_received_inv"]).dt.days)
             .astype("float")
             .replace({np.inf: np.nan, -np.inf: np.nan})
         )
@@ -248,7 +271,7 @@ class IntervalAnalysis:
         )
         df["event_newcase"] = _bool(df["date"].eq(df["dt_received_inv"]))
         df["event_pg_signoff"] = _bool(df["date"].eq(df["dt_pg_signoff"]))
-        df["event_sent_to_ca"] = _bool(df["date"].eq(df["dt_sent_to_ca"]))
+        df["event_req_legal_review"] = _bool(df["date"].eq(df["dt_legal_req_1"]))
         df["event_legal"] = _bool(
             status_text.str.contains(r"\\blegal\\b|solicitor|attorney|advice")
         )
@@ -267,7 +290,8 @@ class IntervalAnalysis:
             bs = backlog_series.copy()
             # normalise headers
             cols_lower = {c: c.lower() for c in bs.columns}
-            bs.rename(columns={c: c.lower() for c in bs.columns}, inplace=True)
+            bs.rename(columns=cols_lower, inplace=True)
+
             # ensure types
             bs["date"] = _to_date(bs["date"])
             bs["backlog"] = pd.to_numeric(bs["backlog"], errors="coerce")
@@ -306,12 +330,15 @@ class IntervalAnalysis:
             "event_legal",
             "event_court",
             "event_pg_signoff",
-            "event_sent_to_ca",
+            "event_req_legal_review",
             "event_flagged",
         ]:
             df[c] = df[c].astype("boolean")
         for c in [
             "days_to_pg_signoff",
+            "days_to_alloc",
+            "days_recieved_to_legal_review",
+            "days_alloc_to_req_legal_review",
             "fte",
             "weighting",
             "wip_load",
@@ -329,6 +356,8 @@ class IntervalAnalysis:
             "status",
             "season",
             "dow",
+            "legal_review",
+            "legal_review_cat",
         ]:
             df[c] = df[c].astype("string")
         for c in [
@@ -338,7 +367,7 @@ class IntervalAnalysis:
             "dt_received_inv",
             "dt_alloc_team",
             "dt_close",
-            "dt_sent_to_ca",
+            "dt_legal_req_1",
         ]:
             df[c] = _to_date(df[c])
 
@@ -359,13 +388,23 @@ class IntervalAnalysis:
         out = {}
         if "days_to_pg_signoff" in df.columns:
             out["days_to_pg_signoff"] = df["days_to_pg_signoff"]
+        if "days_to_alloc" in df.columns:
+            out["days_to_alloc"] = df["days_to_alloc"]
         if {"dt_close", "dt_alloc_invest"}.issubset(df.columns):
             out["days_alloc_to_close"] = (
                 df["dt_close"] - df["dt_alloc_invest"]
             ).dt.days.astype("float")
-        if {"dt_sent_to_ca", "dt_alloc_invest"}.issubset(df.columns):
-            out["days_alloc_to_sent_to_ca"] = (
-                df["dt_sent_to_ca"] - df["dt_alloc_invest"]
+        if "days_alloc_to_req_legal_review" in df.columns:
+            out["days_alloc_to_req_legal_review"] = df["days_alloc_to_req_legal_review"]
+        if {"dt_legal_req_1", "dt_alloc_invest"}.issubset(df.columns):
+            out["days_alloc_to_req_legal_review"] = (
+                df["dt_legal_req_1"] - df["dt_alloc_invest"]
+            ).dt.days.astype("float")
+        if "days_recieved_to_legal_review" in df.columns:
+            out["days_recieved_to_legal_review"] = df["days_recieved_to_legal_review"]
+        if {"dt_legal_req_1", "dt_received_inv"}.issubset(df.columns):
+            out["days_recieved_to_legal_review"] = (
+                df["dt_legal_req_1"] - df["dt_received_inv"]
             ).dt.days.astype("float")
         if "time_since_last_pickup" in df.columns:
             out["inter_pickup_days"] = df["time_since_last_pickup"]
@@ -373,7 +412,11 @@ class IntervalAnalysis:
 
     @staticmethod
     def distribution_summary(s: pd.Series) -> Dict[str, Any]:
-        s = pd.to_numeric(s, errors="coerce").dropna()
+        # s = pd.to_numeric(s, errors="coerce").dropna()
+        # filter out negatives
+        s = pd.to_numeric(s, errors="coerce").dropna().astype(float)
+        s = s[s >= 0]
+
         if s.empty:
             return {"count": 0}
         q = s.quantile([0.1, 0.25, 0.5, 0.75, 0.9])
@@ -536,13 +579,22 @@ def _volatility_score_safe(
                     dfl["dt_close"] - dfl["dt_alloc_invest"]
                 ).dt.days.astype("float")
             )
-        elif metric == "days_alloc_to_sent_to_ca" and {
-            "dt_sent_to_ca",
+        elif metric == "days_alloc_to_req_legal_review" and {
+            "dt_legal_req_1",
             "dt_alloc_invest",
         }.issubset(dfl.columns):
             dfl = dfl.assign(
-                days_alloc_to_sent_to_ca=(
-                    dfl["dt_sent_to_ca"] - dfl["dt_alloc_invest"]
+                days_alloc_to_req_legal_review=(
+                    dfl["dt_legal_req_1"] - dfl["dt_alloc_invest"]
+                ).dt.days.astype("float")
+            )
+        elif metric == "days_recieved_to_legal_review" and {
+            "dt_legal_req_1",
+            "dt_alloc_invest",
+        }.issubset(dfl.columns):
+            dfl = dfl.assign(
+                days_recieved_to_legal_review=(
+                    dfl["dt_legal_req_1"] - dfl["dt_alloc_invest"]
                 ).dt.days.astype("float")
             )
         else:
@@ -707,6 +759,164 @@ def plot_pg_signoff_monthly_trends(
     plt.show()
 
     print("[plot_pg_signoff_monthly_trends] Saved plots to:")
+    print(" ", plot1)
+    print(" ", plot2)
+    print(" ", plot3)
+    print(" ", plot4)
+    print(" ", plot5)
+    print(" ", plot6)
+
+    return {
+        "trend": trend,
+        "trend_all": trend_all,
+        "plots": {
+            "by_case_type": plot1,
+            "by_case_type_delta": plot2,
+            "all": plot3,
+            "all_delta": plot4,
+            "by_case_type_with_all": plot5,
+            "by_case_type_delta_with_all": plot6,
+        },
+    }
+
+
+def plot_allocation_monthly_trends(
+    di: pd.DataFrame,
+    outdir: Path | str = "data/out/plot/plots",
+) -> dict:
+    """
+    Plot monthly median and month-over-month delta of `days_to_alloc`
+    by case_type, plus overall ("ALL case types") trends.
+    Saves PNGs and also displays the plots.
+
+    Parameters
+    ----------
+    di : pd.DataFrame
+        Interval frame from IntervalAnalysis.build_interval_frame(...).
+    outdir : Path or str, default "data/out/plot/plots"
+        Directory where PNG plots will be saved.
+
+    Returns
+    -------
+    dict
+        {"trend": ..., "trend_all": ..., "plots": {...}}
+    """
+
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    print("[plot_allocation_monthly_trends] outdir =", outdir)
+
+    # --- Compute monthly trend by case_type ---
+    trend = IntervalAnalysis.monthly_trend(
+        di,
+        metric="days_to_alloc",
+        agg="median",
+        by=["case_type"],
+    ).copy()
+    trend["month"] = pd.to_datetime(trend["yyyymm"] + "-01")
+
+    piv = trend.pivot(
+        index="month", columns="case_type", values="days_to_alloc"
+    ).sort_index()
+    piv_delta = trend.pivot(
+        index="month", columns="case_type", values="mom_delta"
+    ).sort_index()
+
+    # 1) Monthly median lines
+    plt.figure(figsize=(16, 9))
+    for col in piv.columns:
+        plt.plot(piv.index, piv[col], label=str(col))
+    plt.title("Monthly median: days_to_alloc by case_type")
+    plt.xlabel("Month")
+    plt.ylabel("Days to Allocate (median)")
+    plt.xticks(rotation=45)
+    plt.subplots_adjust(right=0.85, top=0.92, bottom=0.15)
+    plt.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=3)
+    plot1 = outdir / "monthly_trend_days_to_alloc_by_case_type.png"
+    plt.savefig(plot1, bbox_inches="tight", dpi=150)
+    plt.show()
+
+    # 2) Month-over-month delta lines
+    plt.figure(figsize=(16, 9))
+    for col in piv_delta.columns:
+        plt.plot(piv_delta.index, piv_delta[col], label=str(col))
+    plt.title("Monthly MoM delta: days_to_alloc by case_type")
+    plt.xlabel("Month")
+    plt.ylabel("MoM delta (days)")
+    plt.xticks(rotation=45)
+    plt.legend()
+    plot2 = outdir / "monthly_mom_delta_days_to_alloc_by_case_type.png"
+    plt.savefig(plot2, bbox_inches="tight", dpi=150)
+    plt.show()
+
+    # --- Overall ("all case types") monthly trend & MoM delta ---
+    try:
+        trend_all = IntervalAnalysis.monthly_trend(
+            di, metric="days_to_alloc", agg="median"  # no 'by' -> overall
+        ).copy()
+        trend_all["month"] = pd.to_datetime(trend_all["yyyymm"] + "-01")
+    except Exception:
+        trend_all = trend.groupby("yyyymm", as_index=False).agg(
+            days_to_alloc=("days_to_alloc", "median"),
+            mom_delta=("mom_delta", "median"),
+        )
+        trend_all["month"] = pd.to_datetime(trend_all["yyyymm"] + "-01")
+
+    s_all = trend_all.set_index("month")["days_to_alloc"].sort_index()
+    s_all_delta = trend_all.set_index("month")["mom_delta"].sort_index()
+
+    # 3) Standalone: All case types — monthly median
+    plt.figure(figsize=(16, 9))
+    plt.plot(s_all.index, s_all.values, marker="o")
+    plt.title("Monthly median: days_to_alloc — ALL case types")
+    plt.xlabel("Month")
+    plt.ylabel("Days to allocate (median)")
+    plt.xticks(rotation=45)
+    plot3 = outdir / "monthly_trend_days_to_alloc_ALL.png"
+    plt.savefig(plot3, bbox_inches="tight", dpi=150)
+    plt.show()
+
+    # 4) Standalone: All case types — MoM delta
+    plt.figure(figsize=(16, 9))
+    plt.plot(s_all_delta.index, s_all_delta.values, marker="o")
+    plt.title("Monthly MoM delta: days_to_alloc — ALL case types")
+    plt.xlabel("Month")
+    plt.ylabel("MoM delta (days)")
+    plt.xticks(rotation=45)
+    plot4 = outdir / "monthly_mom_delta_days_to_alloc_ALL.png"
+    plt.savefig(plot4, bbox_inches="tight", dpi=150)
+    plt.show()
+
+    # 5) Overlay with ALL (median)
+    plt.figure(figsize=(16, 9))
+    for col in piv.columns:
+        plt.plot(piv.index, piv[col], alpha=0.6, label=str(col))
+    plt.plot(s_all.index, s_all.values, linewidth=3, label="ALL case types")
+    plt.title("Monthly median: days_to_alloc by case_type + ALL")
+    plt.xlabel("Month")
+    plt.ylabel("Days to Allocate (median)")
+    plt.xticks(rotation=45)
+    plt.legend(ncol=2, fontsize=8)
+    plot5 = outdir / "monthly_trend_days_to_alloc_by_case_type_with_ALL.png"
+    plt.savefig(plot5, bbox_inches="tight", dpi=150)
+    plt.show()
+
+    # 6) Overlay with ALL (delta)
+    plt.figure(figsize=(16, 9))
+    for col in piv_delta.columns:
+        plt.plot(piv_delta.index, piv_delta[col], alpha=0.6, label=str(col))
+    plt.plot(s_all_delta.index, s_all_delta.values, linewidth=3, label="ALL case types")
+    plt.title("Monthly MoM delta: days_to_alloc by case_type + ALL")
+    plt.xlabel("Month")
+    plt.ylabel("MoM delta (days)")
+    plt.xticks(rotation=45)
+    plt.legend(ncol=2, fontsize=8)
+    plot6 = outdir / "monthly_mom_delta_days_to_alloc_by_case_type_with_ALL.png"
+    plt.savefig(plot6, bbox_inches="tight", dpi=150)
+    plt.show()
+
+    print("[plot_days_to_alloc_monthly_trends] Saved plots to:")
     print(" ", plot1)
     print(" ", plot2)
     print(" ", plot3)

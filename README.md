@@ -17,7 +17,7 @@ Operational analytics, forecasting, and **transparent micro‑simulation + AI‑
 
 * What the  for the Model does
 * Why the for the Model is useful
-* How users can get started with the  for the Model
+* How users can get started with the data prepration for the Model
 * Where users can get help with  for the Model
 * Who maintains and contributes to the  for the Model
 

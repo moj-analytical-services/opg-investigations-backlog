@@ -1133,7 +1133,6 @@ def build_daily_panel(
     if holidays is not None and len(pd.Index(holidays)) > 0:
         hol = pd.to_datetime(pd.Index(holidays)).normalize()
         date_index = date_index.difference(hol)
-    dates = pd.DataFrame({"date": date_index})
 
     # 4) Build staff-date grid (all combinations)
     staff = typed[["staff_id", "team"]].drop_duplicates()
@@ -1142,6 +1141,15 @@ def build_daily_panel(
         .merge(pd.DataFrame({"date": date_index}).assign(_k=1), on="_k", how="outer")
         .drop(columns=["_k"])
     )
+
+    dates = pd.DataFrame({"date": date_index, "_k": 1})
+    grid = staff.merge(dates, how="cross")
+
+    # grid = (
+    #     pd.DataFrame({"staff_id": staff_id, "_k": 1})
+    #     .merge(dates, on="_k")
+    #     .drop(columns="_k")
+    # )
 
     # 5) Merge WIP data (wip & wip_load). If grid has filtered dates, merge naturally subsets.
     grid = grid.merge(wip, on=["date", "staff_id", "team"], how="left")
@@ -1208,12 +1216,13 @@ def build_daily_panel(
                 out.append(i - last if last is not None else pd.NA)
         return pd.Series(out, index=series.index)
 
-    grid["time_since_last_pickup"] = (
+    tmp = (
         grid.groupby("staff_id", group_keys=False)["event_newcase"]
         .apply(_days_since_last_pickup)
-        .fillna(99)
-        .astype(int)
+        .fillna("__MISSING__")  # or "MISSING" #.fillna(99) #
+        # .astype("Int64")
     )
+    grid["time_since_last_pickup"] = tmp.infer_objects(copy=False)
 
     # 8) Calendar features
     grid["dow"] = grid["date"].dt.day_name().str[:3]
