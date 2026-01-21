@@ -289,7 +289,7 @@ class OPGInvestigationEDA:
         }
         # agg(**agg_spec): Expands the dictionary into keyword arguments for named aggregation.
         out = (
-            self.df.groupby(by).agg(**agg_spec).reset_index()
+            self.df.groupby(by, observed=False).agg(**agg_spec).reset_index()
         )  # perform the groupby aggregation
         return out  # leave sorting to the caller
 

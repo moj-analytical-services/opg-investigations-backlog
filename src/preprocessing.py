@@ -103,6 +103,20 @@ def parse_date_series(s: pd.Series) -> pd.Series:
         if pd.isna(x):
             return pd.NaT
 
+        # --- handle Excel serial dates like 45786 -> 2025-05-09 ---
+        if isinstance(x, (int, float)) and not pd.isna(x):
+            # Excel serial (Windows 1900 date system)
+            if x > 1000:  # guard against small integers that aren't dates
+                return pd.to_datetime(int(x), unit="D", origin="1899-12-30")
+
+        # Also handle numeric strings e.g. "45786" or "45786.0"
+        if isinstance(x, str):
+            x_strip = x.strip()
+            x_num = pd.to_numeric(x_strip, errors="coerce")
+            if pd.notna(x_num) and x_num > 1000:
+                return pd.to_datetime(int(x_num), unit="D", origin="1899-12-30")
+        # --- end of the block ---
+
         # Convert to lowercase string
         xs = str(x).strip().lower()
 
@@ -117,9 +131,7 @@ def parse_date_series(s: pd.Series) -> pd.Series:
         try:
             return pd.to_datetime(xs, dayfirst=True, errors="raise")
         except Exception:
-            return pd.to_datetime(
-                xs, infer_datetime_format=True, dayfirst=True, errors="coerce"
-            )
+            return pd.to_datetime(xs, dayfirst=True, errors="coerce")
 
     # Apply the parser to each element of the Series
     return s.apply(_p)
@@ -132,9 +144,7 @@ def parse_date_series(s: pd.Series) -> pd.Series:
     has_numeric = s_num.notna().any()
 
     # First pass: assume strings with day-first ambiguity handled later
-    dt1 = pd.to_datetime(
-        s, errors="coerce", utc=False, dayfirst=True, infer_datetime_format=True
-    )
+    dt1 = pd.to_datetime(s, errors="coerce", utc=False, dayfirst=True)
 
     if has_numeric:
         # Where dt1 is NaT but we have a number, try fromordinal-like conversion via pandas
@@ -151,7 +161,6 @@ def parse_date_series(s: pd.Series) -> pd.Series:
             s.where(mask_nat),
             errors="coerce",
             dayfirst=False,
-            infer_datetime_format=True,
         )
         dt1 = dt1.fillna(dt2)
 
@@ -261,8 +270,6 @@ def is_term_month(m: int) -> int:
 # DATA LOADING AND FEATURE ENGINEERING
 # -------------------------------------
 
-from pathlib import Path
-
 
 # -------------------------------------------------------------
 # Function: load_raw()
@@ -359,7 +366,8 @@ def load_raw(p: Path, force_encoding: str | None = None):
                 ) from e
 
     # --- Clean up cell text, drop fully-empty rows/columns ---
-    df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+    df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
+
     # Drop columns that are entirely blank/NaN
     df = df.dropna(axis=1, how="all")
     # Drop rows that are entirely blank/NaN
@@ -445,6 +453,51 @@ def col(df: pd.DataFrame, colmap: dict, name: str) -> pd.Series:
 
 
 # -------------------------------------------------------------
+# Helper: application_type_from_case_id()
+# -------------------------------------------------------------
+def application_type_from_case_id(s: pd.Series) -> pd.Series:
+    """
+    Derive application type (0 = LPA, 1 = deputyship) from the
+    'LPA or DeputyID' field.
+
+    Logic:
+      - If the value contains an LPA-style registration number:
+            4 digits, '-' or space, 4 digits, '-' or space, 4 digits
+        e.g. '7001-6571-3350', '7001 6571 3350'
+        → classify as LPA (0).
+
+      - Everything else (including MERIS-style numeric IDs
+        with 7–8 digits, COP case numbers, 'PFA ...', 'AiA', 'SRA',
+        'Multiple\\n12304198', etc.) is treated as a deputyship
+        identifier → classify as 1.
+
+    Missing / blank values are returned as <NA>.
+    """
+    # Normalise to string and trim whitespace
+    s = s.astype("string").str.strip()
+
+    # Identify missing values
+    is_missing = s.isna() | (s == "")
+
+    # LPA-style numbers: 4 digits, '-' OR space, 4 digits, '-' OR space, 4 digits
+    lpa_pattern = r"\b\d{4}[- ]\d{4}[- ]\d{4}\b"
+    has_lpa_number = s.str.contains(lpa_pattern, regex=True, na=False)
+
+    # 0 = LPA, 1 = deputyship (Meris, COP order IDs, etc.)
+    app_type = pd.Series(
+        np.where(has_lpa_number, 0, 1),
+        index=s.index,
+        dtype="Int64",
+        name="application_type",
+    )
+
+    # Put back proper missing values
+    app_type[is_missing] = pd.NA
+
+    return app_type
+
+
+# -------------------------------------------------------------
 # Function: engineer()
 # -------------------------------------------------------------
 def engineer(
@@ -498,6 +551,13 @@ def engineer(
         }
     )
 
+    # Derive application type from the case-ID-like field
+    # 0 = LPA, 1 = deputyship
+    lpa_dep_series = col(
+        df, colmap, "LPA or DeputyID"
+    )  # or col(df, colmap, "ID") if that's your case ID
+    out["application_type"] = application_type_from_case_id(lpa_dep_series)
+
     # Parse and standardise relevant date columns
     out["dt_received_inv"] = parse_date_series(
         col(df, colmap, "Date Received in Investigations")
@@ -505,6 +565,8 @@ def engineer(
     out["dt_alloc_invest"] = parse_date_series(
         col(df, colmap, "Date allocated to current investigator")
     )
+    out["days_to_alloc"] = (out["dt_alloc_invest"] - out["dt_received_inv"]).dt.days
+
     out["dt_alloc_team"] = parse_date_series(col(df, colmap, "Date allocated to team"))
     out["dt_pg_signoff"] = parse_date_series(col(df, colmap, "PG Sign off date"))
     out["dt_close"] = parse_date_series(col(df, colmap, "Closure Date"))
@@ -523,6 +585,58 @@ def engineer(
     out["dt_date_of_order"] = parse_date_series(col(df, colmap, "Date Of Order"))
     out["dt_flagged"] = parse_date_series(col(df, colmap, "Flagged Date"))
     out["dt_sent_to_ca"] = parse_date_series(col(df, colmap, "Date Sent To CA"))
+
+    # --- Legal review request date & indicator ---
+    # 1) Pull the raw date column from the real dataset
+    #    (change the string below if your header is slightly different)
+    raw_legal_date = col(df, colmap, "Date of Legal Review Request 1")
+
+    # 2) Parse to datetime, same as other date fields
+    out["dt_legal_review_req1"] = parse_date_series(raw_legal_date)
+    # out["dt_legal_req_1"] = pd.to_datetime(out["dt_legal_review_req1"], unit="D", origin="1899-12-30", errors="coerce")
+
+    # 3) Create a binary 0/1 indicator: 1 if any legal review request date present, else 0
+    out["legal_review"] = out["dt_legal_review_req1"].notna().astype("int8")
+
+    # # 4) Optionally make it a categorical type (still 0/1 values)
+    # out["legal_review"] = out["legal_review"].astype("category")
+    out["legal_review_cat"] = out["legal_review"].astype("category")
+
+    # --- Investigation Status ---
+    # Pull the raw Status column from the real dataset
+    # Adjust the string if your raw header is different, e.g. "Investigation Status"
+    raw_status = col(df, colmap, "Status")
+    # Tidy up whitespace
+    status_clean = raw_status.astype("string").str.strip()
+
+    # Map any variants to the exact categories we want
+    status_clean = status_clean.replace(
+        {
+            "To be allocated": "To be allocated",
+            "Awaiting investigator": "Awaiting investigator",
+            "Investigation Phase": "Investigation Phase",
+            "Closed": "Closed",
+            "No further action": "No further action",
+            "Further action": "Further action",
+            # Add any other raw spellings / capitalisation here if needed
+            # "Awaiting Investigator": "Awaiting investigator",
+            # "INVESTIGATION PHASE": "Investigation Phase",
+        }
+    )
+
+    # Categorical status with a fixed, ordered set of levels
+    out["status"] = pd.Categorical(
+        status_clean,
+        categories=[
+            "To be allocated",
+            "Awaiting investigator",
+            "Investigation Phase",
+            "Closed",
+            "No further action",
+            "Further action",
+        ],
+        ordered=True,  # set to False if you don't care about ordering
+    )
 
     # Fill missing FTEs with 1.0, hash investigator names for anonymization, and add placeholders
     # Defaults, anonymisation, and placeholders
@@ -545,7 +659,16 @@ def engineer(
         diff = (out["dt_pg_signoff"] - out["dt_alloc_invest"]).dt.days
         out["days_to_pg_signoff"] = pd.to_numeric(diff, errors="coerce")
 
-    # --- NEW: derive a clean boolean, then optionally filter ---
+    # Compute days_to_alloc if wholly missing but dates exist
+    if (
+        out["days_to_alloc"].isna().all()
+        and ("dt_alloc_invest" in out)
+        and ("dt_received_inv" in out)
+    ):
+        diff = (out["dt_alloc_invest"] - out["dt_received_inv"]).dt.days
+        out["days_to_alloc"] = pd.to_numeric(diff, errors="coerce")
+
+    # --- Derive a clean boolean, then optionally filter ---
     reall_str = out["reallocated_case"].astype(str).str.strip().str.lower()
     out["is_reallocated"] = reall_str.isin({"yes", "y", "true", "1"})
 

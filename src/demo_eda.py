@@ -1,4 +1,4 @@
-
+# Synthesized data
 # demo_eda.py
 # Small, self-contained demo that exercises key methods on synthetic OPG-like data.
 
@@ -148,4 +148,3 @@ print(eda.km_quantiles_by_group("days_to_signoff", "event_signed_off", "risk_ban
 
 print("\n== MONTHLY KPIs by team ==")
 print(eda.monthly_kpis().head(12))
-
