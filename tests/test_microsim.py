@@ -1,7 +1,14 @@
 # tests/test_microsim.py
 from pathlib import Path
 from g7_assessment.data import generate_synthetic, basic_clean, engineer_intervals
-from g7_assessment.microsim import arrivals_by_case_type, backlog_daily, staffing_daily, km_quantiles_by_group, legal_review_routing
+from g7_assessment.microsim import (
+    arrivals_by_case_type,
+    backlog_daily,
+    staffing_daily,
+    km_quantiles_by_group,
+    legal_review_routing,
+)
+
 
 def test_microsim_exports_shape(tmp_path: Path):
     df = engineer_intervals(basic_clean(generate_synthetic(1000, seed=11)))

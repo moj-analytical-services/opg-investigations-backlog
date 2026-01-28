@@ -6,6 +6,7 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 CATEGORICALS = ["team", "case_type", "risk", "reallocation"]
 NUMERICS = ["weighting", "days_to_alloc"]
 
+
 def build_design_matrix(df: pd.DataFrame):
     X_cat = [c for c in CATEGORICALS if c in df.columns]
     X_num = [c for c in NUMERICS if c in df.columns]
@@ -16,6 +17,7 @@ def build_design_matrix(df: pd.DataFrame):
         ]
     )
     return pre
+
 
 def derive_case_level_features(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()

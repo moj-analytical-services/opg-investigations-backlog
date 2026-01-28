@@ -18,6 +18,7 @@ DEFAULT_CAT = ["team", "case_type", "risk", "reallocation"]
 # Potential high-card columns; if missing in df, they’re ignored.
 DEFAULT_HIGH_CARD = ["occupation"]
 
+
 def build_preprocessor(
     df: pd.DataFrame,
     y_name: str = "needs_legal_review",
@@ -44,26 +45,44 @@ def build_preprocessor(
 
     # Numeric pipeline: impute median -> scale -> (optional) pairwise interactions
     num_steps = [
-        ("impute", SimpleImputer(strategy="median")),   # robust to skew/outliers
+        ("impute", SimpleImputer(strategy="median")),  # robust to skew/outliers
         ("scale", StandardScaler()),
     ]
     if numeric_interactions and len(num) >= 2:
         # interaction_only=True to avoid squared terms unless you want curvature
-        num_steps.append(("poly", PolynomialFeatures(degree=2, include_bias=False, interaction_only=True)))
+        num_steps.append(
+            (
+                "poly",
+                PolynomialFeatures(degree=2, include_bias=False, interaction_only=True),
+            )
+        )
     num_pipe = Pipeline(num_steps)
 
     # Categorical one-hot: impute most frequent -> OHE with reference level dropped
-    cat_pipe = Pipeline([
-        ("impute", SimpleImputer(strategy="most_frequent")),
-        ("ohe", OneHotEncoder(drop="first", handle_unknown="ignore")),
-    ])
+    cat_pipe = Pipeline(
+        [
+            ("impute", SimpleImputer(strategy="most_frequent")),
+            ("ohe", OneHotEncoder(drop="first", handle_unknown="ignore")),
+        ]
+    )
 
     # High-card target encoding (e.g., occupation): leak-safe via our K-Fold encoder
     # This transformer expects DF with those cols and receives y in fit().
-    te_pipe = Pipeline([
-        ("impute", SimpleImputer(strategy="most_frequent")),
-        ("te", KFoldTargetEncoder(cols=high, target_col=y_name, n_splits=5, smoothing=10.0)),
-    ]) if high else "drop"
+    te_pipe = (
+        Pipeline(
+            [
+                ("impute", SimpleImputer(strategy="most_frequent")),
+                (
+                    "te",
+                    KFoldTargetEncoder(
+                        cols=high, target_col=y_name, n_splits=5, smoothing=10.0
+                    ),
+                ),
+            ]
+        )
+        if high
+        else "drop"
+    )
 
     # Build the ColumnTransformer (order matters only for interpretability)
     pre = ColumnTransformer(

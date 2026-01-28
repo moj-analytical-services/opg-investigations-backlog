@@ -80,12 +80,15 @@ def generate_synthetic(
 
     # Allocation delay (days) by case_type & risk (Gamma; strictly positive)
     # Base means (tune as needed)
-    base_means = {
-        "LPA": 8, "Deputyship": 14, "EPA": 10, "Complaint": 6, "Other": 9
-    }
+    base_means = {"LPA": 8, "Deputyship": 14, "EPA": 10, "Complaint": 6, "Other": 9}
     risk_mult = {"Low": 0.8, "Medium": 1.0, "High": 1.25}
 
-    mean_alloc = np.array([base_means.get(ct, 10) * risk_mult.get(rk, 1.0) for ct, rk in zip(case_type, risk)])
+    mean_alloc = np.array(
+        [
+            base_means.get(ct, 10) * risk_mult.get(rk, 1.0)
+            for ct, rk in zip(case_type, risk)
+        ]
+    )
     # Reallocation adds friction
     mean_alloc = mean_alloc * (1.10 + 0.35 * reallocation)
 
@@ -101,16 +104,34 @@ def generate_synthetic(
     date_alloc[open_alloc] = pd.NaT
 
     # Needs legal review probability by (case_type, risk)
-    base_legal = {"LPA": 0.08, "Deputyship": 0.14, "EPA": 0.10, "Complaint": 0.05, "Other": 0.07}
+    base_legal = {
+        "LPA": 0.08,
+        "Deputyship": 0.14,
+        "EPA": 0.10,
+        "Complaint": 0.05,
+        "Other": 0.07,
+    }
     risk_legal = {"Low": -0.01, "Medium": 0.0, "High": +0.07}
     p_legal = np.clip(
-        np.array([base_legal.get(ct, 0.08) + risk_legal.get(rk, 0.0) for ct, rk in zip(case_type, risk)]), 0.01, 0.9
+        np.array(
+            [
+                base_legal.get(ct, 0.08) + risk_legal.get(rk, 0.0)
+                for ct, rk in zip(case_type, risk)
+            ]
+        ),
+        0.01,
+        0.9,
     )
     needs_legal_review = rng.binomial(1, p_legal).astype(int)
 
     # PG sign-off delay (Gamma), with heavier tails; censored if long
     base_pg = {"LPA": 20, "Deputyship": 35, "EPA": 24, "Complaint": 12, "Other": 18}
-    mean_pg = np.array([base_pg.get(ct, 20) * risk_mult.get(rk, 1.0) for ct, rk in zip(case_type, risk)])
+    mean_pg = np.array(
+        [
+            base_pg.get(ct, 20) * risk_mult.get(rk, 1.0)
+            for ct, rk in zip(case_type, risk)
+        ]
+    )
     mean_pg = mean_pg * (1.05 + 0.20 * needs_legal_review)
     k_pg = 1.6
     theta_pg = mean_pg / k_pg
@@ -124,7 +145,13 @@ def generate_synthetic(
 
     # Weighting in [1..5] skewed upward with risk
     weighting = np.clip(
-        rng.normal(2.8 + np.array([{"Low": -0.3, "Medium": 0.0, "High": +0.4}[rk] for rk in risk]), 0.6), 1.0, 5.0
+        rng.normal(
+            2.8
+            + np.array([{"Low": -0.3, "Medium": 0.0, "High": +0.4}[rk] for rk in risk]),
+            0.6,
+        ),
+        1.0,
+        5.0,
     )
 
     # Assemble DataFrame
@@ -146,21 +173,51 @@ def generate_synthetic(
     )
 
     # Derive days_to_alloc from dates (may be recomputed by your engineer())
-    df["days_to_alloc"] = (df["date_allocated_investigator"] - df["date_received_opg"]).dt.days
+    df["days_to_alloc"] = (
+        df["date_allocated_investigator"] - df["date_received_opg"]
+    ).dt.days
     return df
 
 
 @click.command()
-@click.option("--rows", type=int, default=20000, show_default=True, help="Number of synthetic cases.")
-@click.option("--start", "start_date", type=str, default="2022-01-01", show_default=True, help="Start date (YYYY-MM-DD).")
-@click.option("--span", "days_span", type=int, default=1200, show_default=True, help="Days span to spread arrivals.")
+@click.option(
+    "--rows",
+    type=int,
+    default=20000,
+    show_default=True,
+    help="Number of synthetic cases.",
+)
+@click.option(
+    "--start",
+    "start_date",
+    type=str,
+    default="2022-01-01",
+    show_default=True,
+    help="Start date (YYYY-MM-DD).",
+)
+@click.option(
+    "--span",
+    "days_span",
+    type=int,
+    default=1200,
+    show_default=True,
+    help="Days span to spread arrivals.",
+)
 @click.option("--seed", type=int, default=7, show_default=True, help="Random seed.")
-@click.option("--out", "out_csv", type=click.Path(dir_okay=False), default="data/raw/synthetic_investigations.csv", show_default=True)
+@click.option(
+    "--out",
+    "out_csv",
+    type=click.Path(dir_okay=False),
+    default="data/raw/synthetic_investigations.csv",
+    show_default=True,
+)
 def main(rows, start_date, days_span, seed, out_csv):
     """CLI: write a fresh synthetic dataset to CSV each run."""
     out = Path(out_csv)
     out.parent.mkdir(parents=True, exist_ok=True)
-    df = generate_synthetic(n_rows=rows, start_date=start_date, days_span=days_span, seed=seed)
+    df = generate_synthetic(
+        n_rows=rows, start_date=start_date, days_span=days_span, seed=seed
+    )
     df.to_csv(out, index=False)
     click.echo(f"Wrote synthetic data: {out} (rows={len(df):,})")
 

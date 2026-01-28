@@ -11,26 +11,32 @@ from lifelines import KaplanMeierFitter
 
 # ---------- ARRIVALS ----------
 
+
 def arrivals_by_case_type(df: pd.DataFrame, freq: str = "D") -> pd.DataFrame:
     """
     Count new cases by time period and case_type.
     - freq: 'D' (daily), 'M' (monthly), 'Y' (yearly).
     """
     d = df.copy()
-    d["case_type"] = d.get("case_type", pd.Series(index=d.index, dtype="object")).fillna("Unknown")
+    d["case_type"] = d.get(
+        "case_type", pd.Series(index=d.index, dtype="object")
+    ).fillna("Unknown")
     d["date"] = pd.to_datetime(d["date_received_opg"])
     d = d.dropna(subset=["date"])
     d["period"] = d["date"].dt.to_period(freq).dt.to_timestamp()
     out = (
         d.groupby(["period", "case_type"])
-         .size().rename("n")
-         .reset_index()
-         .rename(columns={"period": "date"})
-         .sort_values(["date", "case_type"])
+        .size()
+        .rename("n")
+        .reset_index()
+        .rename(columns={"period": "date"})
+        .sort_values(["date", "case_type"])
     )
     return out
 
+
 # ---------- STAFFING ----------
+
 
 def staffing_daily(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -43,14 +49,18 @@ def staffing_daily(df: pd.DataFrame) -> pd.DataFrame:
     out = out.dropna(subset=["date"])
     grp = (
         out.groupby(out["date"].dt.floor("D"))
-           .agg(investigators_on_duty=("investigator", pd.Series.nunique),
-                n_allocations=("id", "count"))
-           .reset_index(names="date")
-           .sort_values("date")
+        .agg(
+            investigators_on_duty=("investigator", pd.Series.nunique),
+            n_allocations=("id", "count"),
+        )
+        .reset_index(names="date")
+        .sort_values("date")
     )
     return grp
 
+
 # ---------- BACKLOG (DAILY) ----------
+
 
 def backlog_daily(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -70,13 +80,21 @@ def backlog_daily(df: pd.DataFrame) -> pd.DataFrame:
         for d in pd.date_range(r["start"], r["end"], freq="D"):
             records.append({"date": d})
     if not records:
-        return pd.DataFrame(columns=["date","backlog"]).astype({"date":"datetime64[ns]"})
-    return (pd.DataFrame(records)
-              .groupby("date").size().rename("backlog")
-              .reset_index()
-              .sort_values("date"))
+        return pd.DataFrame(columns=["date", "backlog"]).astype(
+            {"date": "datetime64[ns]"}
+        )
+    return (
+        pd.DataFrame(records)
+        .groupby("date")
+        .size()
+        .rename("backlog")
+        .reset_index()
+        .sort_values("date")
+    )
+
 
 # ---------- SERVICE-TIME QUANTILES (KAPLAN–MEIER) ----------
+
 
 def km_quantiles_by_group(
     df: pd.DataFrame,
@@ -108,7 +126,8 @@ def km_quantiles_by_group(
             qs = np.quantile(obs, quantiles)
             row = {group_cols[i]: keys[i] for i in range(len(group_cols))}
             row.update({f"q{int(q*100)}": float(qv) for q, qv in zip(quantiles, qs)})
-            row["n"] = int(len(g)); row["events"] = int(g["event"].sum())
+            row["n"] = int(len(g))
+            row["events"] = int(g["event"].sum())
             rows.append(row)
             continue
 
@@ -120,7 +139,8 @@ def km_quantiles_by_group(
                 # lifelines' percentile: timeline where S(t) <= 1-q
                 t = kmf.percentile(100 * q)
                 row[f"q{int(q*100)}"] = float(t) if np.isfinite(t) else np.nan
-            row["n"] = int(len(g)); row["events"] = int(g["event"].sum())
+            row["n"] = int(len(g))
+            row["events"] = int(g["event"].sum())
             rows.append(row)
         except Exception:
             # Fallback: empirical on observed events
@@ -130,16 +150,23 @@ def km_quantiles_by_group(
             qs = np.quantile(obs, quantiles)
             row = {group_cols[i]: keys[i] for i in range(len(group_cols))}
             row.update({f"q{int(q*100)}": float(qv) for q, qv in zip(quantiles, qs)})
-            row["n"] = int(len(g)); row["events"] = int(g["event"].sum())
+            row["n"] = int(len(g))
+            row["events"] = int(g["event"].sum())
             rows.append(row)
 
     if not rows:
-        return pd.DataFrame(columns=group_cols + [f"q{int(q*100)}" for q in quantiles] + ["n","events"])
+        return pd.DataFrame(
+            columns=group_cols + [f"q{int(q*100)}" for q in quantiles] + ["n", "events"]
+        )
     return pd.DataFrame(rows).sort_values(group_cols)
+
 
 # ---------- ROUTING PROBABILITIES (LEGAL REVIEW) ----------
 
-def legal_review_routing(df: pd.DataFrame, group_cols: list[str] = ["case_type", "risk"]) -> pd.DataFrame:
+
+def legal_review_routing(
+    df: pd.DataFrame, group_cols: list[str] = ["case_type", "risk"]
+) -> pd.DataFrame:
     """
     Estimate P(legal_review=1) by group to drive branching in the simulation.
     """
@@ -160,13 +187,15 @@ def legal_review_routing(df: pd.DataFrame, group_cols: list[str] = ["case_type",
 
     out = (
         d.groupby(group_cols)["needs_legal_review"]
-         .agg(rate="mean", n="size")
-         .reset_index()
-         .sort_values(group_cols)
+        .agg(rate="mean", n="size")
+        .reset_index()
+        .sort_values(group_cols)
     )
     return out
 
+
 # ---------- BUNDLE WRITER ----------
+
 
 def write_microsim_bundle(df: pd.DataFrame, out_dir: Path) -> dict:
     """
@@ -191,14 +220,18 @@ def write_microsim_bundle(df: pd.DataFrame, out_dir: Path) -> dict:
 
     # 4) Service-time quantiles by case_type x risk (receipt → PG sign-off)
     if "days_to_pg_signoff" in df.columns and "event_pg_signoff" in df.columns:
-        km_q = km_quantiles_by_group(df, "days_to_pg_signoff", "event_pg_signoff",
-                                     group_cols=["case_type","risk"])
+        km_q = km_quantiles_by_group(
+            df,
+            "days_to_pg_signoff",
+            "event_pg_signoff",
+            group_cols=["case_type", "risk"],
+        )
         km_q.to_csv(out_dir / "service_time_quantiles_pg_signoff.csv", index=False)
     else:
         km_q = pd.DataFrame()
 
     # 5) Routing to legal review by case_type x risk
-    route = legal_review_routing(df, ["case_type","risk"])
+    route = legal_review_routing(df, ["case_type", "risk"])
     route.to_csv(out_dir / "routing_legal_review.csv", index=False)
 
     # 6) Metadata (for auditability)
@@ -210,7 +243,9 @@ def write_microsim_bundle(df: pd.DataFrame, out_dir: Path) -> dict:
             "arrivals_monthly": int(len(a_month)),
             "backlog_daily": int(len(b_daily)),
             "staffing_daily": int(len(s_daily)),
-            "service_time_quantiles_pg_signoff": int(len(km_q)) if not km_q.empty else 0,
+            "service_time_quantiles_pg_signoff": (
+                int(len(km_q)) if not km_q.empty else 0
+            ),
             "routing_legal_review": int(len(route)),
         },
     }

@@ -1,29 +1,29 @@
 import pandas as pd
 
 # --- fabricate a tiny typed dataset ---
-typed = pd.DataFrame({
-    'case_id': ['C1','C2'],
-    'investigator': ['Alice','Bob'],
-    'team': ['T1','T1'],
-    'role': ['',''],
-    'fte': [1.0, 0.8],
-    'staff_id': ['S1','S2'],
-
-    # key dates
-    'dt_received_inv': [pd.Timestamp('2025-01-01'), pd.Timestamp('2025-01-02')],
-    'dt_alloc_invest': [pd.Timestamp('2025-01-02'), pd.Timestamp('2025-01-03')],
-    'dt_alloc_team': [pd.NaT, pd.NaT],
-    'dt_pg_signoff': [pd.NaT, pd.Timestamp('2025-01-08')],
-    'dt_close': [pd.Timestamp('2025-01-06'), pd.NaT],
-
-    # events
-    'dt_legal_req_1': [pd.NaT, pd.Timestamp('2025-01-04')],
-    'dt_legal_req_2': [pd.NaT, pd.NaT],
-    'dt_legal_req_3': [pd.NaT, pd.NaT],
-    'dt_legal_approval': [pd.NaT, pd.NaT],
-    'dt_date_of_order': [pd.NaT, pd.NaT],
-    'dt_flagged': [pd.NaT, pd.NaT],
-})
+typed = pd.DataFrame(
+    {
+        "case_id": ["C1", "C2"],
+        "investigator": ["Alice", "Bob"],
+        "team": ["T1", "T1"],
+        "role": ["", ""],
+        "fte": [1.0, 0.8],
+        "staff_id": ["S1", "S2"],
+        # key dates
+        "dt_received_inv": [pd.Timestamp("2025-01-01"), pd.Timestamp("2025-01-02")],
+        "dt_alloc_invest": [pd.Timestamp("2025-01-02"), pd.Timestamp("2025-01-03")],
+        "dt_alloc_team": [pd.NaT, pd.NaT],
+        "dt_pg_signoff": [pd.NaT, pd.Timestamp("2025-01-08")],
+        "dt_close": [pd.Timestamp("2025-01-06"), pd.NaT],
+        # events
+        "dt_legal_req_1": [pd.NaT, pd.Timestamp("2025-01-04")],
+        "dt_legal_req_2": [pd.NaT, pd.NaT],
+        "dt_legal_req_3": [pd.NaT, pd.NaT],
+        "dt_legal_approval": [pd.NaT, pd.NaT],
+        "dt_date_of_order": [pd.NaT, pd.NaT],
+        "dt_flagged": [pd.NaT, pd.NaT],
+    }
+)
 
 # --- run horizon, events, wip, and panel ---
 start, end = date_horizon(typed, pad_days=3)
@@ -36,7 +36,7 @@ print("Events shape:", events.shape)
 
 print("\nDaily head:\n", daily.head())
 print("\nBacklog tail:\n", backlog.tail())
-print("\nEvents:\n", events.sort_values(['date','staff_id','event']))
+print("\nEvents:\n", events.sort_values(["date", "staff_id", "event"]))
 
 
 # -----------------------------
@@ -50,8 +50,18 @@ import pandas as pd
 # Define a set of string patterns that represent missing or null values.
 # These strings will be treated as equivalent to NaN during cleaning.
 NULL_STRINGS = {
-    '', 'na', 'n/a', 'none', 'null', '-', '--', 'unknown',
-    'not completed', 'not complete', 'tbc', 'n\\a'
+    "",
+    "na",
+    "n/a",
+    "none",
+    "null",
+    "-",
+    "--",
+    "unknown",
+    "not completed",
+    "not complete",
+    "tbc",
+    "n\\a",
 }
 
 
@@ -75,7 +85,7 @@ def normalise_col(c: str) -> str:
         A cleaned and standardized version of the column name.
     """
     # Convert to string, remove extra spaces, and make lowercase.
-    return re.sub(r'\s+', ' ', str(c).strip().lower())
+    return re.sub(r"\s+", " ", str(c).strip().lower())
 
 
 def parse_date_series(s: pd.Series) -> pd.Series:
@@ -116,13 +126,15 @@ def parse_date_series(s: pd.Series) -> pd.Series:
             return pd.NaT
 
         # Clean up common errors and ordinal suffixes
-        xs = re.sub(r'(\d{1,2})(st|nd|rd|th)', r'\1', xs).replace('legel', 'legal')
+        xs = re.sub(r"(\d{1,2})(st|nd|rd|th)", r"\1", xs).replace("legel", "legal")
 
         # Try strict parsing, then flexible fallback
         try:
-            return pd.to_datetime(xs, dayfirst=True, errors='raise')
+            return pd.to_datetime(xs, dayfirst=True, errors="raise")
         except Exception:
-            return pd.to_datetime(xs, infer_datetime_format=True, dayfirst=True, errors='coerce')
+            return pd.to_datetime(
+                xs, infer_datetime_format=True, dayfirst=True, errors="coerce"
+            )
 
     # Apply the parser to each element of the Series
     return s.apply(_p)
@@ -146,11 +158,11 @@ def hash_id(t: str) -> str:
         An anonymized hash string prefixed with 'S', e.g., 'S1a2b3c4d'.
     """
     # Return empty string for null or blank input
-    if pd.isna(t) or str(t).strip() == '':
-        return ''
+    if pd.isna(t) or str(t).strip() == "":
+        return ""
 
     # Create SHA1 hash and take first 8 characters for compact ID
-    return 'S' + hashlib.sha1(str(t).encode('utf-8')).hexdigest()[:8]
+    return "S" + hashlib.sha1(str(t).encode("utf-8")).hexdigest()[:8]
 
 
 def month_to_season(m: int) -> str:
@@ -176,10 +188,18 @@ def month_to_season(m: int) -> str:
     """
     # Map month numbers to their respective seasons
     return {
-        12: 'winter', 1: 'winter', 2: 'winter',
-        3: 'spring', 4: 'spring', 5: 'spring',
-        6: 'summer', 7: 'summer', 8: 'summer',
-        9: 'autumn', 10: 'autumn', 11: 'autumn'
+        12: "winter",
+        1: "winter",
+        2: "winter",
+        3: "spring",
+        4: "spring",
+        5: "spring",
+        6: "summer",
+        7: "summer",
+        8: "summer",
+        9: "autumn",
+        10: "autumn",
+        11: "autumn",
     }[int(m)]
 
 
@@ -211,8 +231,7 @@ def is_term_month(m: int) -> int:
 from pathlib import Path
 import pandas as pd
 import numpy as np
-import re
-import hashlib
+
 
 # -------------------------------------------------------------
 # Function: load_raw()
@@ -248,7 +267,6 @@ def load_raw(p: Path, force_encoding: str | None = None):
     RuntimeError
         If all encoding attempts fail.
     """
-    import io
 
     # Check file existence
     if not p.exists():
@@ -261,8 +279,17 @@ def load_raw(p: Path, force_encoding: str | None = None):
         tried = []
         # Build list of encodings to try
         encodings_to_try = (
-            [force_encoding] if force_encoding else
-            ["utf-8-sig", "cp1252", "latin1", "iso-8859-1", "utf-16", "utf-16le", "utf-16be"]
+            [force_encoding]
+            if force_encoding
+            else [
+                "utf-8-sig",
+                "cp1252",
+                "latin1",
+                "iso-8859-1",
+                "utf-16",
+                "utf-16le",
+                "utf-16be",
+            ]
         )
 
         df = None
@@ -272,8 +299,12 @@ def load_raw(p: Path, force_encoding: str | None = None):
         for enc in encodings_to_try:
             try:
                 df = pd.read_csv(
-                    p, dtype=str, sep=None, engine="python",
-                    encoding=enc, encoding_errors="strict"
+                    p,
+                    dtype=str,
+                    sep=None,
+                    engine="python",
+                    encoding=enc,
+                    encoding_errors="strict",
                 )
                 break
             except UnicodeDecodeError as e:
@@ -288,10 +319,16 @@ def load_raw(p: Path, force_encoding: str | None = None):
         if df is None:
             try:
                 df = pd.read_csv(
-                    p, dtype=str, sep=None, engine="python",
-                    encoding="cp1252", encoding_errors="replace"
+                    p,
+                    dtype=str,
+                    sep=None,
+                    engine="python",
+                    encoding="cp1252",
+                    encoding_errors="replace",
                 )
-                print(f"[load_raw] WARNING: used cp1252 with replacement after failed encodings: {tried}")
+                print(
+                    f"[load_raw] WARNING: used cp1252 with replacement after failed encodings: {tried}"
+                )
             except Exception as e:
                 raise RuntimeError(
                     f"Failed to read CSV. Tried encodings {tried}. Last error: {last_err}"
@@ -367,34 +404,47 @@ def engineer(df: pd.DataFrame, colmap: dict) -> pd.DataFrame:
     pd.DataFrame
         Cleaned and feature-engineered dataframe ready for downstream modeling.
     """
-    out = pd.DataFrame({
-        'case_id': col(df, colmap, 'ID'),
-        'investigator': col(df, colmap, 'Investigator'),
-        'team': col(df, colmap, 'Team'),
-        'fte': pd.to_numeric(col(df, colmap, 'Investigator FTE'), errors='coerce')
-    })
+    out = pd.DataFrame(
+        {
+            "case_id": col(df, colmap, "ID"),
+            "investigator": col(df, colmap, "Investigator"),
+            "team": col(df, colmap, "Team"),
+            "fte": pd.to_numeric(col(df, colmap, "Investigator FTE"), errors="coerce"),
+        }
+    )
 
     # Parse and standardize all relevant date columns
-    out['dt_received_inv'] = parse_date_series(col(df, colmap, 'Date Received in Investigations'))
-    out['dt_alloc_invest'] = parse_date_series(col(df, colmap, 'Date allocated to current investigator'))
-    out['dt_alloc_team'] = parse_date_series(col(df, colmap, 'Date allocated to team'))
-    out['dt_pg_signoff'] = parse_date_series(col(df, colmap, 'PG Sign off date'))
-    out['dt_close'] = parse_date_series(col(df, colmap, 'Closure Date'))
-    out['dt_legal_req_1'] = parse_date_series(col(df, colmap, 'Date of Legal Review Request 1'))
-    out['dt_legal_rej_1'] = parse_date_series(col(df, colmap, 'Date Legal Rejects 1'))
-    out['dt_legal_req_2'] = parse_date_series(col(df, colmap, 'Date of Legal Review Request 2'))
-    out['dt_legal_rej_2'] = parse_date_series(col(df, colmap, 'Date Legal Rejects 2'))
-    out['dt_legal_req_3'] = parse_date_series(col(df, colmap, 'Date of Legel Review Request 3'))
-    out['dt_legal_approval'] = parse_date_series(col(df, colmap, 'Legal Approval Date'))
-    out['dt_date_of_order'] = parse_date_series(col(df, colmap, 'Date Of Order'))
-    out['dt_flagged'] = parse_date_series(col(df, colmap, 'Flagged Date'))
+    out["dt_received_inv"] = parse_date_series(
+        col(df, colmap, "Date Received in Investigations")
+    )
+    out["dt_alloc_invest"] = parse_date_series(
+        col(df, colmap, "Date allocated to current investigator")
+    )
+    out["dt_alloc_team"] = parse_date_series(col(df, colmap, "Date allocated to team"))
+    out["dt_pg_signoff"] = parse_date_series(col(df, colmap, "PG Sign off date"))
+    out["dt_close"] = parse_date_series(col(df, colmap, "Closure Date"))
+    out["dt_legal_req_1"] = parse_date_series(
+        col(df, colmap, "Date of Legal Review Request 1")
+    )
+    out["dt_legal_rej_1"] = parse_date_series(col(df, colmap, "Date Legal Rejects 1"))
+    out["dt_legal_req_2"] = parse_date_series(
+        col(df, colmap, "Date of Legal Review Request 2")
+    )
+    out["dt_legal_rej_2"] = parse_date_series(col(df, colmap, "Date Legal Rejects 2"))
+    out["dt_legal_req_3"] = parse_date_series(
+        col(df, colmap, "Date of Legel Review Request 3")
+    )
+    out["dt_legal_approval"] = parse_date_series(col(df, colmap, "Legal Approval Date"))
+    out["dt_date_of_order"] = parse_date_series(col(df, colmap, "Date Of Order"))
+    out["dt_flagged"] = parse_date_series(col(df, colmap, "Flagged Date"))
 
     # Fill missing FTEs with 1.0, hash investigator names for anonymization, and add placeholders
-    out['fte'] = out['fte'].fillna(1.0)
-    out['staff_id'] = out['investigator'].apply(hash_id)
-    out['role'] = ''
+    out["fte"] = out["fte"].fillna(1.0)
+    out["staff_id"] = out["investigator"].apply(hash_id)
+    out["role"] = ""
 
     return out
+
 
 # -------------------------------------------------------------
 # Function: date_horizon()
@@ -436,8 +486,12 @@ def date_horizon(typed: pd.DataFrame, pad_days: int = 14):
     >>> (e - s).days >= (pd.Timestamp('2025-02-01') - pd.Timestamp('2025-01-05')).days
     True
     """
-    start = pd.concat([typed['dt_received_inv'], typed['dt_alloc_invest'], typed['dt_alloc_team']]).min()
-    end = pd.concat([typed['dt_close'], typed['dt_pg_signoff'], typed['dt_date_of_order']]).max()
+    start = pd.concat(
+        [typed["dt_received_inv"], typed["dt_alloc_invest"], typed["dt_alloc_team"]]
+    ).min()
+    end = pd.concat(
+        [typed["dt_close"], typed["dt_pg_signoff"], typed["dt_date_of_order"]]
+    ).max()
 
     if pd.isna(start):
         start = pd.Timestamp.today().normalize() - pd.Timedelta(days=30)
@@ -489,38 +543,46 @@ def build_event_log(typed: pd.DataFrame) -> pd.DataFrame:
     """
     rec = []
     for _, r in typed.iterrows():
-        sid, team, fte, cid = r['staff_id'], r['team'], r['fte'], r['case_id']
+        sid, team, fte, cid = r["staff_id"], r["team"], r["fte"], r["case_id"]
 
         def add(dt, etype):
             if pd.isna(dt):
                 return
-            rec.append({
-                'date': dt.normalize(),
-                'staff_id': sid,
-                'team': team,
-                'fte': fte,
-                'case_id': cid,
-                'event': etype,
-                'meta': ''
-            })
+            rec.append(
+                {
+                    "date": dt.normalize(),
+                    "staff_id": sid,
+                    "team": team,
+                    "fte": fte,
+                    "case_id": cid,
+                    "event": etype,
+                    "meta": "",
+                }
+            )
 
-        add(r['dt_alloc_invest'], 'newcase')
-        add(r['dt_legal_req_1'], 'legal_request')
-        add(r['dt_legal_req_2'], 'legal_request')
-        add(r['dt_legal_req_3'], 'legal_request')
-        add(r['dt_legal_approval'], 'legal_approval')
-        add(r['dt_date_of_order'], 'court_order')
+        add(r["dt_alloc_invest"], "newcase")
+        add(r["dt_legal_req_1"], "legal_request")
+        add(r["dt_legal_req_2"], "legal_request")
+        add(r["dt_legal_req_3"], "legal_request")
+        add(r["dt_legal_approval"], "legal_approval")
+        add(r["dt_date_of_order"], "court_order")
 
     ev = pd.DataFrame.from_records(rec)
-    return ev if not ev.empty else pd.DataFrame(
-        columns=['date', 'staff_id', 'team', 'fte', 'case_id', 'event', 'meta']
+    return (
+        ev
+        if not ev.empty
+        else pd.DataFrame(
+            columns=["date", "staff_id", "team", "fte", "case_id", "event", "meta"]
+        )
     )
 
 
 # -------------------------------------------------------------
 # Function: build_wip_series()
 # -------------------------------------------------------------
-def build_wip_series(typed: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
+def build_wip_series(
+    typed: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp
+) -> pd.DataFrame:
     """
     Build a Work-In-Progress (WIP) daily series per staff member.
 
@@ -553,49 +615,55 @@ def build_wip_series(typed: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp
     >>> wip['wip'].ge(0).all()
     True
     """
-    end_dt = typed['dt_close'].fillna(typed['dt_pg_signoff']).fillna(end)
-    intervals = pd.DataFrame({
-        'staff_id': typed['staff_id'],
-        'team': typed['team'],
-        'start': typed['dt_alloc_invest'],
-        'end': end_dt
-    }).dropna()
+    end_dt = typed["dt_close"].fillna(typed["dt_pg_signoff"]).fillna(end)
+    intervals = pd.DataFrame(
+        {
+            "staff_id": typed["staff_id"],
+            "team": typed["team"],
+            "start": typed["dt_alloc_invest"],
+            "end": end_dt,
+        }
+    ).dropna()
 
     deltas = []
     for _, r in intervals.iterrows():
-        s = r['start'].normalize()
-        e = r['end'].normalize()
+        s = r["start"].normalize()
+        e = r["end"].normalize()
         if s > end or e < start:
             continue
         s = max(s, start)
         e = min(e, end)
-        deltas.append((r['staff_id'], r['team'], s, 1))
-        deltas.append((r['staff_id'], r['team'], e + pd.Timedelta(days=1), -1))
+        deltas.append((r["staff_id"], r["team"], s, 1))
+        deltas.append((r["staff_id"], r["team"], e + pd.Timedelta(days=1), -1))
 
     if not deltas:
-        return pd.DataFrame(columns=['date', 'staff_id', 'team', 'wip'])
+        return pd.DataFrame(columns=["date", "staff_id", "team", "wip"])
 
-    deltas = pd.DataFrame(deltas, columns=['staff_id', 'team', 'date', 'delta'])
-    all_dates = pd.DataFrame({'date': pd.date_range(start, end, freq='D')})
+    deltas = pd.DataFrame(deltas, columns=["staff_id", "team", "date", "delta"])
+    all_dates = pd.DataFrame({"date": pd.date_range(start, end, freq="D")})
 
     rows = []
-    for (sid, team), g in deltas.groupby(['staff_id', 'team']):
-        gg = g.groupby('date', as_index=False)['delta'].sum()
-        grid = all_dates.merge(gg, on='date', how='left').fillna({'delta': 0})
-        grid['wip'] = grid['delta'].cumsum()
-        grid['staff_id'] = sid
-        grid['team'] = team
-        rows.append(grid[['date', 'staff_id', 'team', 'wip']])
+    for (sid, team), g in deltas.groupby(["staff_id", "team"]):
+        gg = g.groupby("date", as_index=False)["delta"].sum()
+        grid = all_dates.merge(gg, on="date", how="left").fillna({"delta": 0})
+        grid["wip"] = grid["delta"].cumsum()
+        grid["staff_id"] = sid
+        grid["team"] = team
+        rows.append(grid[["date", "staff_id", "team", "wip"]])
 
-    return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame(
-        columns=['date', 'staff_id', 'team', 'wip']
+    return (
+        pd.concat(rows, ignore_index=True)
+        if rows
+        else pd.DataFrame(columns=["date", "staff_id", "team", "wip"])
     )
 
 
 # -------------------------------------------------------------
 # Function: build_backlog_series()
 # -------------------------------------------------------------
-def build_backlog_series(typed: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
+def build_backlog_series(
+    typed: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp
+) -> pd.DataFrame:
     """
     Build a daily backlog series (accepted minus allocated cumulative totals).
 
@@ -626,25 +694,25 @@ def build_backlog_series(typed: pd.DataFrame, start: pd.Timestamp, end: pd.Times
     1
     """
     accepted = (
-        typed[['dt_received_inv']]
+        typed[["dt_received_inv"]]
         .dropna()
-        .assign(date=lambda d: d['dt_received_inv'].dt.normalize())['date']
+        .assign(date=lambda d: d["dt_received_inv"].dt.normalize())["date"]
         .value_counts()
         .sort_index()
     )
     allocated = (
-        typed[['dt_alloc_invest']]
+        typed[["dt_alloc_invest"]]
         .dropna()
-        .assign(date=lambda d: d['dt_alloc_invest'].dt.normalize())['date']
+        .assign(date=lambda d: d["dt_alloc_invest"].dt.normalize())["date"]
         .value_counts()
         .sort_index()
     )
 
-    idx = pd.date_range(start, end, freq='D')
+    idx = pd.date_range(start, end, freq="D")
     acc = accepted.reindex(idx, fill_value=0).cumsum()
     allo = allocated.reindex(idx, fill_value=0).cumsum()
-    backlog = (acc - allo).rename('backlog_available').to_frame()
-    backlog.index.name = 'date'
+    backlog = (acc - allo).rename("backlog_available").to_frame()
+    backlog.index.name = "date"
     return backlog.reset_index()
 
 
@@ -698,14 +766,21 @@ def build_daily_panel(typed: pd.DataFrame, start: pd.Timestamp, end: pd.Timestam
     staff = typed[["staff_id", "team", "role", "fte"]].drop_duplicates()
     dates = pd.DataFrame({"date": pd.date_range(start, end, freq="D")})
     grid = dates.assign(key=1).merge(staff.assign(key=1), on="key").drop(columns="key")
-    grid = grid.merge(wip, on=["date", "staff_id", "team"], how="left").fillna({"wip": 0})
+    grid = grid.merge(wip, on=["date", "staff_id", "team"], how="left").fillna(
+        {"wip": 0}
+    )
 
     if not ev.empty:
         ev_flags = (
             ev.assign(flag=1)
-              .pivot_table(index=["date", "staff_id"], columns="event", values="flag", aggfunc="max")
-              .reset_index()
-              .rename_axis(None, axis=1)
+            .pivot_table(
+                index=["date", "staff_id"],
+                columns="event",
+                values="flag",
+                aggfunc="max",
+            )
+            .reset_index()
+            .rename_axis(None, axis=1)
         )
         grid = grid.merge(ev_flags, on=["date", "staff_id"], how="left")
 
@@ -729,13 +804,17 @@ def build_daily_panel(typed: pd.DataFrame, start: pd.Timestamp, end: pd.Timestam
 
     first_alloc = (
         typed.dropna(subset=["dt_alloc_invest"])
-             .groupby("staff_id")["dt_alloc_invest"].min()
-             .rename("first_alloc")
+        .groupby("staff_id")["dt_alloc_invest"]
+        .min()
+        .rename("first_alloc")
     )
     grid = grid.merge(first_alloc, on="staff_id", how="left")
     grid["weeks_since_start"] = (
-        (grid["date"] - grid["first_alloc"]).dt.days // 7
-    ).fillna(0).clip(lower=0).astype(int)
+        ((grid["date"] - grid["first_alloc"]).dt.days // 7)
+        .fillna(0)
+        .clip(lower=0)
+        .astype(int)
+    )
     grid["is_new_starter"] = (grid["weeks_since_start"] < 4).astype(int)
 
     grid["mentoring_flag"] = 0
@@ -744,49 +823,70 @@ def build_daily_panel(typed: pd.DataFrame, start: pd.Timestamp, end: pd.Timestam
     grid = grid.merge(backlog, on="date", how="left").fillna({"backlog_available": 0})
 
     grid["event_newcase"] = grid["newcase"].astype(int)
-    grid["event_legal"] = ((grid["legal_request"] + grid["legal_approval"]) > 0).astype(int)
+    grid["event_legal"] = ((grid["legal_request"] + grid["legal_approval"]) > 0).astype(
+        int
+    )
     grid["event_court"] = grid["court_order"].astype(int)
 
-    grid = grid.drop(columns=["newcase", "legal_request", "legal_approval", "court_order", "first_alloc"])
+    grid = grid.drop(
+        columns=[
+            "newcase",
+            "legal_request",
+            "legal_approval",
+            "court_order",
+            "first_alloc",
+        ]
+    )
 
     cols = [
-        "date", "staff_id", "team", "role", "fte",
-        "is_new_starter", "weeks_since_start",
-        "wip", "time_since_last_pickup",
-        "mentoring_flag", "trainee_flag",
-        "backlog_available", "term_flag", "season", "dow", "bank_holiday",
-        "event_newcase", "event_legal", "event_court"
+        "date",
+        "staff_id",
+        "team",
+        "role",
+        "fte",
+        "is_new_starter",
+        "weeks_since_start",
+        "wip",
+        "time_since_last_pickup",
+        "mentoring_flag",
+        "trainee_flag",
+        "backlog_available",
+        "term_flag",
+        "season",
+        "dow",
+        "bank_holiday",
+        "event_newcase",
+        "event_legal",
+        "event_court",
     ]
     daily = grid[cols].sort_values(["staff_id", "date"]).reset_index(drop=True)
     return daily, backlog, ev
 
 
-
-
 # --- fabricate a tiny typed dataset ---
-typed = pd.DataFrame({
-    'case_id': ['C1','C2'],
-    'investigator': ['Alice','Bob'],
-    'team': ['T1','T1'],
-    'role': ['',''],
-    'fte': [1.0, 0.8],
-    'staff_id': ['S1','S2'],
-
-    # key dates
-    'dt_received_inv': [pd.Timestamp('2025-01-01'), pd.Timestamp('2025-01-02')],
-    'dt_alloc_invest': [pd.Timestamp('2025-01-02'), pd.Timestamp('2025-01-03')],
-    'dt_alloc_team': [pd.NaT, pd.NaT],
-    'dt_pg_signoff': [pd.NaT, pd.Timestamp('2025-01-08')],
-    'dt_close': [pd.Timestamp('2025-01-06'), pd.NaT],
-
-    # events
-    'dt_legal_req_1': [pd.NaT, pd.Timestamp('2025-01-04')],
-    'dt_legal_req_2': [pd.NaT, pd.NaT],
-    'dt_legal_req_3': [pd.NaT, pd.NaT],
-    'dt_legal_approval': [pd.NaT, pd.NaT],
-    'dt_date_of_order': [pd.NaT, pd.NaT],
-    'dt_flagged': [pd.NaT, pd.NaT],
-})
+typed = pd.DataFrame(
+    {
+        "case_id": ["C1", "C2"],
+        "investigator": ["Alice", "Bob"],
+        "team": ["T1", "T1"],
+        "role": ["", ""],
+        "fte": [1.0, 0.8],
+        "staff_id": ["S1", "S2"],
+        # key dates
+        "dt_received_inv": [pd.Timestamp("2025-01-01"), pd.Timestamp("2025-01-02")],
+        "dt_alloc_invest": [pd.Timestamp("2025-01-02"), pd.Timestamp("2025-01-03")],
+        "dt_alloc_team": [pd.NaT, pd.NaT],
+        "dt_pg_signoff": [pd.NaT, pd.Timestamp("2025-01-08")],
+        "dt_close": [pd.Timestamp("2025-01-06"), pd.NaT],
+        # events
+        "dt_legal_req_1": [pd.NaT, pd.Timestamp("2025-01-04")],
+        "dt_legal_req_2": [pd.NaT, pd.NaT],
+        "dt_legal_req_3": [pd.NaT, pd.NaT],
+        "dt_legal_approval": [pd.NaT, pd.NaT],
+        "dt_date_of_order": [pd.NaT, pd.NaT],
+        "dt_flagged": [pd.NaT, pd.NaT],
+    }
+)
 
 # --- run horizon, events, wip, and panel ---
 start, end = date_horizon(typed, pad_days=3)
@@ -799,10 +899,17 @@ print("Events shape:", events.shape)
 
 print("\nDaily head:\n", daily.head())
 print("\nBacklog tail:\n", backlog.tail())
-print("\nEvents:\n", events.sort_values(['date','staff_id','event']))
+print("\nEvents:\n", events.sort_values(["date", "staff_id", "event"]))
+
 
 # New function: calculate_time_interval
-def calculate_time_interval(df: pd.DataFrame, start_col: str, end_col: str, new_col_name: str = 'time_interval', unit: str = 'days') -> pd.DataFrame:
+def calculate_time_interval(
+    df: pd.DataFrame,
+    start_col: str,
+    end_col: str,
+    new_col_name: str = "time_interval",
+    unit: str = "days",
+) -> pd.DataFrame:
     """
     Calculate the time interval between two datetime columns in a DataFrame.
 
@@ -829,29 +936,35 @@ def calculate_time_interval(df: pd.DataFrame, start_col: str, end_col: str, new_
     df_copy = df.copy()
     if start_col in df_copy.columns and end_col in df_copy.columns:
         # Ensure columns are datetime type, coercing errors to NaT
-        df_copy[start_col] = pd.to_datetime(df_copy[start_col], errors='coerce')
-        df_copy[end_col] = pd.to_datetime(df_copy[end_col], errors='coerce')
+        df_copy[start_col] = pd.to_datetime(df_copy[start_col], errors="coerce")
+        df_copy[end_col] = pd.to_datetime(df_copy[end_col], errors="coerce")
 
         time_delta = df_copy[end_col] - df_copy[start_col]
 
-        if unit == 'days':
+        if unit == "days":
             df_copy[new_col_name] = time_delta.dt.days
-        elif unit == 'hours':
+        elif unit == "hours":
             df_copy[new_col_name] = time_delta.dt.total_seconds() / 3600
-        elif unit == 'minutes':
+        elif unit == "minutes":
             df_copy[new_col_name] = time_delta.dt.total_seconds() / 60
-        elif unit == 'seconds':
+        elif unit == "seconds":
             df_copy[new_col_name] = time_delta.dt.total_seconds()
         else:
-            raise ValueError(f"Unsupported unit: {unit}. Choose from 'days', 'hours', 'minutes', 'seconds'.")
+            raise ValueError(
+                f"Unsupported unit: {unit}. Choose from 'days', 'hours', 'minutes', 'seconds'."
+            )
     else:
         df_copy[new_col_name] = np.nan
-        print(f"Warning: One or both columns ('{start_col}', '{end_col}') not found. '{new_col_name}' column filled with NaNs.")
+        print(
+            f"Warning: One or both columns ('{start_col}', '{end_col}') not found. '{new_col_name}' column filled with NaNs."
+        )
     return df_copy
 
 
 # New function: analyse_monthly_time_interval_trend
-def analyse_monthly_time_interval_trend(df: pd.DataFrame, config: dict, time_interval_col_name: str = 'time_interval') -> pd.DataFrame:
+def analyse_monthly_time_interval_trend(
+    df: pd.DataFrame, config: dict, time_interval_col_name: str = "time_interval"
+) -> pd.DataFrame:
     """
     Analyzes monthly trends and distributions of a calculated time interval across different case types.
 
@@ -888,17 +1001,26 @@ def analyse_monthly_time_interval_trend(df: pd.DataFrame, config: dict, time_int
     pd.DataFrame
         A DataFrame containing the aggregated monthly trend statistics.
     """
-    analysis_config = config.get('monthly_trend_analysis', {})
+    analysis_config = config.get("monthly_trend_analysis", {})
 
-    output_filepath_str = analysis_config.get('output_filepath')
-    case_type_col = analysis_config.get('case_type_column_name')
-    start_time_col = analysis_config.get('start_time_column_name')
-    end_time_col = analysis_config.get('end_time_column_name')
-    time_unit = analysis_config.get('time_interval_unit', 'days')
-    analysis_start_date_str = analysis_config.get('analysis_start_date')
-    analysis_end_date_str = analysis_config.get('analysis_end_date')
+    output_filepath_str = analysis_config.get("output_filepath")
+    case_type_col = analysis_config.get("case_type_column_name")
+    start_time_col = analysis_config.get("start_time_column_name")
+    end_time_col = analysis_config.get("end_time_column_name")
+    time_unit = analysis_config.get("time_interval_unit", "days")
+    analysis_start_date_str = analysis_config.get("analysis_start_date")
+    analysis_end_date_str = analysis_config.get("analysis_end_date")
 
-    if not all([output_filepath_str, case_type_col, start_time_col, end_time_col, analysis_start_date_str, analysis_end_date_str]):
+    if not all(
+        [
+            output_filepath_str,
+            case_type_col,
+            start_time_col,
+            end_time_col,
+            analysis_start_date_str,
+            analysis_end_date_str,
+        ]
+    ):
         raise ValueError(
             "Missing one or more required configuration parameters in 'monthly_trend_analysis' "
             "section: output_filepath, case_type_column_name, start_time_column_name, "
@@ -910,7 +1032,9 @@ def analyse_monthly_time_interval_trend(df: pd.DataFrame, config: dict, time_int
     df_copy = df.copy()
 
     # 1. Calculate the 'time interval'
-    df_copy = calculate_time_interval(df_copy, start_time_col, end_time_col, time_interval_col_name, time_unit)
+    df_copy = calculate_time_interval(
+        df_copy, start_time_col, end_time_col, time_interval_col_name, time_unit
+    )
 
     # 2. Filter the DataFrame based on analysis date range
     analysis_start_date = pd.to_datetime(analysis_start_date_str)
@@ -918,68 +1042,87 @@ def analyse_monthly_time_interval_trend(df: pd.DataFrame, config: dict, time_int
 
     # Filter based on the start date column
     df_filtered = df_copy[
-        (df_copy[start_time_col] >= analysis_start_date) &
-        (df_copy[start_time_col] <= analysis_end_date)
+        (df_copy[start_time_col] >= analysis_start_date)
+        & (df_copy[start_time_col] <= analysis_end_date)
     ].copy()
 
     if df_filtered.empty:
-        print(f"No data found for the specified analysis period: {analysis_start_date_str} to {analysis_end_date_str}. "
-              "Returning empty DataFrame.")
+        print(
+            f"No data found for the specified analysis period: {analysis_start_date_str} to {analysis_end_date_str}. "
+            "Returning empty DataFrame."
+        )
         return pd.DataFrame()
 
     # Ensure time interval is numeric and non-negative
-    df_filtered[time_interval_col_name] = pd.to_numeric(df_filtered[time_interval_col_name], errors='coerce')
+    df_filtered[time_interval_col_name] = pd.to_numeric(
+        df_filtered[time_interval_col_name], errors="coerce"
+    )
     df_filtered = df_filtered[df_filtered[time_interval_col_name].notna()]
-    df_filtered = df_filtered[df_filtered[time_interval_col_name] >= 0] # Assuming time intervals are non-negative
+    df_filtered = df_filtered[
+        df_filtered[time_interval_col_name] >= 0
+    ]  # Assuming time intervals are non-negative
 
     if df_filtered.empty:
-        print("No valid time interval data after filtering and cleaning. Returning empty DataFrame.")
+        print(
+            "No valid time interval data after filtering and cleaning. Returning empty DataFrame."
+        )
         return pd.DataFrame()
 
     # 3. Extract year and month to create a 'year_month' column
-    df_filtered['year_month'] = df_filtered[start_time_col].dt.to_period('M')
+    df_filtered["year_month"] = df_filtered[start_time_col].dt.to_period("M")
 
     # Group by `year_month` and `case_type_column_name` and calculate statistics
-    grouped_by_case_type = df_filtered.groupby(['year_month', case_type_col])[time_interval_col_name].agg(
-        mean=np.mean,
-        median=np.median,
-        std_dev=np.std,
-        p25=lambda x: x.quantile(0.25),
-        p75=lambda x: x.quantile(0.75),
-        count='size'
-    ).reset_index()
-    grouped_by_case_type['category'] = grouped_by_case_type[case_type_col]
-    grouped_by_case_type['aggregation_level'] = 'per_case_type'
+    grouped_by_case_type = (
+        df_filtered.groupby(["year_month", case_type_col])[time_interval_col_name]
+        .agg(
+            mean=np.mean,
+            median=np.median,
+            std_dev=np.std,
+            p25=lambda x: x.quantile(0.25),
+            p75=lambda x: x.quantile(0.75),
+            count="size",
+        )
+        .reset_index()
+    )
+    grouped_by_case_type["category"] = grouped_by_case_type[case_type_col]
+    grouped_by_case_type["aggregation_level"] = "per_case_type"
     grouped_by_case_type = grouped_by_case_type.drop(columns=[case_type_col])
 
-
     # 4. Group by `year_month` only (for 'all case types') and calculate statistics
-    grouped_all_case_types = df_filtered.groupby('year_month')[time_interval_col_name].agg(
-        mean=np.mean,
-        median=np.median,
-        std_dev=np.std,
-        p25=lambda x: x.quantile(0.25),
-        p75=lambda x: x.quantile(0.75),
-        count='size'
-    ).reset_index()
-    grouped_all_case_types['category'] = 'ALL' # Label for the overall aggregation
-    grouped_all_case_types['aggregation_level'] = 'all_case_types'
+    grouped_all_case_types = (
+        df_filtered.groupby("year_month")[time_interval_col_name]
+        .agg(
+            mean=np.mean,
+            median=np.median,
+            std_dev=np.std,
+            p25=lambda x: x.quantile(0.25),
+            p75=lambda x: x.quantile(0.75),
+            count="size",
+        )
+        .reset_index()
+    )
+    grouped_all_case_types["category"] = "ALL"  # Label for the overall aggregation
+    grouped_all_case_types["aggregation_level"] = "all_case_types"
 
     # 5. Combine the results
-    combined_results = pd.concat([grouped_by_case_type, grouped_all_case_types], ignore_index=True)
+    combined_results = pd.concat(
+        [grouped_by_case_type, grouped_all_case_types], ignore_index=True
+    )
 
     # Convert 'year_month' Period to string for better saving/plotting compatibility
-    combined_results['year_month'] = combined_results['year_month'].astype(str)
+    combined_results["year_month"] = combined_results["year_month"].astype(str)
 
     # Save the combined DataFrame
     output_filepath.parent.mkdir(parents=True, exist_ok=True)
-    if output_filepath.suffix.lower() == '.csv':
+    if output_filepath.suffix.lower() == ".csv":
         combined_results.to_csv(output_filepath, index=False)
-    elif output_filepath.suffix.lower() == '.parquet':
+    elif output_filepath.suffix.lower() == ".parquet":
         combined_results.to_parquet(output_filepath, index=False)
     else:
-        print(f"Warning: Unsupported output file format '{output_filepath.suffix}'. Saving as CSV by default.")
-        combined_results.to_csv(output_filepath.with_suffix('.csv'), index=False)
+        print(
+            f"Warning: Unsupported output file format '{output_filepath.suffix}'. Saving as CSV by default."
+        )
+        combined_results.to_csv(output_filepath.with_suffix(".csv"), index=False)
 
     print(f"Monthly time interval trends saved to {output_filepath}")
     return combined_results

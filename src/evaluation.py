@@ -1,6 +1,6 @@
 from __future__ import annotations
-import numpy as np
 from sklearn.metrics import roc_auc_score, average_precision_score, brier_score_loss
+
 
 def classification_metrics(y_true, y_prob):
     y_true = (y_true).astype(int)

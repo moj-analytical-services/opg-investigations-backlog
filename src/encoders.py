@@ -7,7 +7,7 @@ from typing import List, Optional, Union
 import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.model_selection import KFold
+
 
 class KFoldTargetEncoder(BaseEstimator, TransformerMixin):
     """
@@ -31,6 +31,7 @@ class KFoldTargetEncoder(BaseEstimator, TransformerMixin):
     random_state : Optional[int]
         For deterministic fold splits.
     """
+
     def __init__(
         self,
         cols: List[str],
@@ -45,9 +46,13 @@ class KFoldTargetEncoder(BaseEstimator, TransformerMixin):
         self.smoothing = smoothing
         self.random_state = random_state
         self.global_mean_: Optional[float] = None
-        self.full_maps_: dict = {}   # mapping per column (Series: category -> encoded float)
+        self.full_maps_: dict = (
+            {}
+        )  # mapping per column (Series: category -> encoded float)
 
-    def _smooth_mean(self, count: pd.Series, mean: pd.Series, prior: float) -> pd.Series:
+    def _smooth_mean(
+        self, count: pd.Series, mean: pd.Series, prior: float
+    ) -> pd.Series:
         # Bayesian-style smoothing toward prior mean
         return (count * mean + self.smoothing * prior) / (count + self.smoothing)
 
@@ -55,7 +60,11 @@ class KFoldTargetEncoder(BaseEstimator, TransformerMixin):
         # X is the subset with specified columns; y is the full target Series/array.
         if y is None:
             raise ValueError("KFoldTargetEncoder requires y to be provided to fit().")
-        X = pd.DataFrame(X, columns=self.cols) if not isinstance(X, pd.DataFrame) else X[self.cols]
+        X = (
+            pd.DataFrame(X, columns=self.cols)
+            if not isinstance(X, pd.DataFrame)
+            else X[self.cols]
+        )
         y = pd.Series(y, name=self.target_col).astype(float)
 
         # Prior (global) mean
@@ -73,7 +82,11 @@ class KFoldTargetEncoder(BaseEstimator, TransformerMixin):
 
     def transform(self, X):
         # Map categories to smoothed means; unseen -> global prior
-        X = pd.DataFrame(X, columns=self.cols) if not isinstance(X, pd.DataFrame) else X[self.cols]
+        X = (
+            pd.DataFrame(X, columns=self.cols)
+            if not isinstance(X, pd.DataFrame)
+            else X[self.cols]
+        )
         out = pd.DataFrame(index=X.index)
         for c in self.cols:
             m = self.full_maps_.get(c, pd.Series(dtype=float))

@@ -3,14 +3,15 @@
 
 from __future__ import annotations
 import pandas as pd
-import numpy as np
 import statsmodels.api as sm
+
 
 def vif_for_numeric(df: pd.DataFrame, cols):
     """
     Compute VIF for a set of numeric columns (after dropping NA rows).
     """
     from statsmodels.stats.outliers_influence import variance_inflation_factor
+
     X = df[cols].dropna()
     X = sm.add_constant(X)
     vifs = []
@@ -21,6 +22,7 @@ def vif_for_numeric(df: pd.DataFrame, cols):
     return pd.DataFrame(rows)
     #     vifs.append((c, variance_inflation_factor(X.values, i)))
     # return pd.DataFrame(vifs, columns=["feature", "vif"])
+
 
 def corr_table(df: pd.DataFrame, cols):
     """
