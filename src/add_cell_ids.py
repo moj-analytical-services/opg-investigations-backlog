@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-import sys, uuid
+import sys
+import uuid
 from pathlib import Path
 import nbformat as nbf
+
 
 def add_ids(path: Path) -> bool:
     nb = nbf.read(path, as_version=4)
@@ -15,6 +17,7 @@ def add_ids(path: Path) -> bool:
         nbf.write(nb, path)
     return changed
 
+
 def main(paths):
     for p in map(Path, paths):
         if p.suffix == ".ipynb" and p.exists():
@@ -26,6 +29,7 @@ def main(paths):
                 print(f"[add_cell_ids] ERROR processing {p}: {e}", file=sys.stderr)
                 return 1
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))

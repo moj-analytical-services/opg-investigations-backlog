@@ -1,12 +1,28 @@
 # --- RUN-ALL PIPELINE (prep → intervals → team demo → distributions) ---
 @cli.command(name="run-all")
-@click.option("--raw", "raw_csv", type=click.Path(exists=True, dir_okay=False), required=True,
-              help="Path to the raw investigations CSV.")
-@click.option("--outbase", type=click.Path(file_okay=False), default=".",
-              help="Base folder under which outputs will be written (data/processed, reports).")
-@click.option("--interval-col", default="days_to_alloc",
-              help="Interval to analyse in distributions (e.g., 'days_to_alloc' or 'days_to_pg_signoff').")
-@click.option("--group", default="case_type", help="Grouping column for distributions (default: case_type).")
+@click.option(
+    "--raw",
+    "raw_csv",
+    type=click.Path(exists=True, dir_okay=False),
+    required=True,
+    help="Path to the raw investigations CSV.",
+)
+@click.option(
+    "--outbase",
+    type=click.Path(file_okay=False),
+    default=".",
+    help="Base folder under which outputs will be written (data/processed, reports).",
+)
+@click.option(
+    "--interval-col",
+    default="days_to_alloc",
+    help="Interval to analyse in distributions (e.g., 'days_to_alloc' or 'days_to_pg_signoff').",
+)
+@click.option(
+    "--group",
+    default="case_type",
+    help="Grouping column for distributions (default: case_type).",
+)
 def run_all(raw_csv: str, outbase: str, interval_col: str, group: str):
     """
     Run the full sequence using your original notebook logic, without changing it:
@@ -30,20 +46,32 @@ def run_all(raw_csv: str, outbase: str, interval_col: str, group: str):
     rep_dir.mkdir(parents=True, exist_ok=True)
 
     # ---- 1) PREP (uses your notebook functions exactly) ----
-    raw, colmap = load_raw(Path(raw_csv))         # from preprocessing.py (re-exports your notebook)
-    eng = engineer(raw, colmap)                   # your missing-data & typing logic stays intact
+    raw, colmap = load_raw(
+        Path(raw_csv)
+    )  # from preprocessing.py (re-exports your notebook)
+    eng = engineer(raw, colmap)  # your missing-data & typing logic stays intact
     eng_path = data_dir / "engineered.csv"
     eng.to_csv(eng_path, index=False)
 
     # ---- 2) INTERVALS (uses your notebook functions exactly) ----
-    events = build_event_log(eng);            events_path = data_dir / "event_log.csv";         events.to_csv(events_path, index=False)
-    backlog = build_backlog_series(eng);      backlog_path = data_dir / "backlog_series.csv";   backlog.to_csv(backlog_path, index=False)
-    daily = build_daily_panel(eng);           daily_path = data_dir / "daily_panel.csv";        daily.to_csv(daily_path, index=False)
-    dsum = summarise_daily_panel(eng);        dsum_path = data_dir / "daily_panel_summary.csv"; dsum.to_csv(dsum_path, index=False)
+    events = build_event_log(eng)
+    events_path = data_dir / "event_log.csv"
+    events.to_csv(events_path, index=False)
+    backlog = build_backlog_series(eng)
+    backlog_path = data_dir / "backlog_series.csv"
+    backlog.to_csv(backlog_path, index=False)
+    daily = build_daily_panel(eng)
+    daily_path = data_dir / "daily_panel.csv"
+    daily.to_csv(daily_path, index=False)
+    dsum = summarise_daily_panel(eng)
+    dsum_path = data_dir / "daily_panel_summary.csv"
+    dsum.to_csv(dsum_path, index=False)
 
     # ---- 3) DEMO: last-year interval analysis by team (non-invasive) ----
     try:
-        trend = last_year_by_team(eng_df=eng, backlog_series=backlog, bank_holidays=None)
+        trend = last_year_by_team(
+            eng_df=eng, backlog_series=backlog, bank_holidays=None
+        )
         trend_path = rep_dir / "last_year_by_team.csv"
         trend.to_csv(trend_path, index=False)
     except Exception as e:
@@ -59,8 +87,16 @@ def run_all(raw_csv: str, outbase: str, interval_col: str, group: str):
 
     # ---- 5) Minimal run summary (Markdown) ----
     summary = rep_dir / "run_all_summary.md"
-    start = pd.to_datetime(eng.get("date_received_opg") if "date_received_opg" in eng.columns else eng.get("date")).min()
-    end = pd.to_datetime(eng.get("date_received_opg") if "date_received_opg" in eng.columns else eng.get("date")).max()
+    start = pd.to_datetime(
+        eng.get("date_received_opg")
+        if "date_received_opg" in eng.columns
+        else eng.get("date")
+    ).min()
+    end = pd.to_datetime(
+        eng.get("date_received_opg")
+        if "date_received_opg" in eng.columns
+        else eng.get("date")
+    ).max()
     summary.write_text(
         f"# Run Summary ({datetime.utcnow().isoformat()}Z)\n\n"
         f"- Raw input: `{raw_csv}`\n"
@@ -70,23 +106,36 @@ def run_all(raw_csv: str, outbase: str, interval_col: str, group: str):
         f"  - {events_path}\n  - {backlog_path}\n  - {daily_path}\n  - {dsum_path}\n"
         f"  - {trend_path if trend_path else '(trend step skipped)'}\n"
         f"  - {annual_path}\n  - {yoy_path}\n",
-        encoding="utf-8"
+        encoding="utf-8",
     )
 
     click.echo(f"✅ Completed. Outputs in:\n  {data_dir}\n  {rep_dir}")
 
+
 # --- Synthetic data generator passthrough (optional convenience) ---
 @cli.command(name="gen-synth")
 @click.option("--rows", type=int, default=20000, show_default=True)
-@click.option("--start", "start_date", type=str, default="2022-01-01", show_default=True)
+@click.option(
+    "--start", "start_date", type=str, default="2022-01-01", show_default=True
+)
 @click.option("--span", "days_span", type=int, default=1200, show_default=True)
 @click.option("--seed", type=int, default=7, show_default=True)
-@click.option("--out", "out_csv", type=click.Path(dir_okay=False), default="data/raw/synthetic_investigations.csv", show_default=True)
+@click.option(
+    "--out",
+    "out_csv",
+    type=click.Path(dir_okay=False),
+    default="data/raw/synthetic_investigations.csv",
+    show_default=True,
+)
 def gen_synth(rows, start_date, days_span, seed, out_csv):
     """Generate synthetic investigations and write to CSV (uses synth.generate_synthetic)."""
     from .synth import generate_synthetic
     from pathlib import Path
-    df = generate_synthetic(n_rows=rows, start_date=start_date, days_span=days_span, seed=seed)
-    out = Path(out_csv); out.parent.mkdir(parents=True, exist_ok=True)
+
+    df = generate_synthetic(
+        n_rows=rows, start_date=start_date, days_span=days_span, seed=seed
+    )
+    out = Path(out_csv)
+    out.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out, index=False)
     click.echo(f"Wrote: {out} (rows={len(df):,})")

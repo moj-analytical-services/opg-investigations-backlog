@@ -2,8 +2,8 @@
 # Build daily backlog, plus monthly/yearly aggregates and case-type splits.
 
 from __future__ import annotations
-import numpy as np
 import pandas as pd
+
 
 def daily_backlog(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -28,22 +28,35 @@ def daily_backlog(df: pd.DataFrame) -> pd.DataFrame:
             records.append({"date": d, "case_id": r.get("id", i)})
 
     if not records:
-        return pd.DataFrame(columns=["date", "backlog"]).astype({"date":"datetime64[ns]"})
+        return pd.DataFrame(columns=["date", "backlog"]).astype(
+            {"date": "datetime64[ns]"}
+        )
 
     daily = (
         pd.DataFrame.from_records(records)
-        .groupby("date").size().rename("backlog").reset_index()
+        .groupby("date")
+        .size()
+        .rename("backlog")
+        .reset_index()
         .sort_values("date")
     )
     return daily
 
-def aggregate(daily_df: pd.DataFrame, freq: str = "M", by: list[str] | None = None, cases_df: pd.DataFrame | None = None):
+
+def aggregate(
+    daily_df: pd.DataFrame,
+    freq: str = "M",
+    by: list[str] | None = None,
+    cases_df: pd.DataFrame | None = None,
+):
     """
     Aggregate backlog to a chosen frequency (D/M/Y), optionally by fields (e.g., case_type).
     If grouping by a field, supply 'cases_df' with those columns and a date per record.
     """
     df = daily_df.copy()
-    df["period"] = df["date"].dt.to_period(freq).dt.to_timestamp()  # standard start-of-period
+    df["period"] = (
+        df["date"].dt.to_period(freq).dt.to_timestamp()
+    )  # standard start-of-period
 
     if not by:
         out = df.groupby("period")["backlog"].sum().reset_index()
